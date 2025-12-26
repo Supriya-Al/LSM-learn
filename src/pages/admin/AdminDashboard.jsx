@@ -1,275 +1,659 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import api from '../../lib/api';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { Users, BookOpen, GraduationCap, Activity, TrendingUp, ArrowRight, Award, Shield } from 'lucide-react';
+import {
+  Users,
+  BookOpen,
+  Award,
+  Calendar,
+  Clock,
+  CheckCircle,
+  XCircle,
+  TrendingUp,
+  BarChart3,
+  UserCheck,
+  FileText,
+} from 'lucide-react';
 
 export const AdminDashboard = () => {
+  const [loading, setLoading] = useState(true);
+  const [students, setStudents] = useState([]);
+  const [courses, setCourses] = useState([]);
+  const [enrollments, setEnrollments] = useState([]);
+  const [certificates, setCertificates] = useState([]);
+  const [attendance, setAttendance] = useState([]);
   const [stats, setStats] = useState({
-    totalUsers: 0,
+    totalStudents: 0,
     totalCourses: 0,
     totalEnrollments: 0,
-    activeCourses: 0,
+    totalCertificates: 0,
+    totalAttendance: 0,
   });
-  const [courseStats, setCourseStats] = useState([]);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchStats();
+    fetchAllData();
   }, []);
 
-  const fetchStats = async () => {
+  const fetchAllData = async () => {
     try {
-      const [usersRes, coursesRes, enrollmentsRes, analyticsRes] = await Promise.all([
-        api.get('/admin/users'),
-        api.get('/courses'),
-        api.get('/enrollments'),
-        api.get('/analytics/courses'),
+      setLoading(true);
+      const [
+        usersRes,
+        coursesRes,
+        enrollmentsRes,
+        certificatesRes,
+        attendanceRes,
+      ] = await Promise.all([
+        api.get('/admin/users').catch(() => ({ data: [] })),
+        api.get('/courses').catch(() => ({ data: [] })),
+        api.get('/enrollments').catch(() => ({ data: [] })),
+        api.get('/admin/certificates').catch(() => ({ data: [] })),
+        api.get('/attendance').catch(() => ({ data: [] })),
       ]);
 
+      const usersData = usersRes.data || [];
+      const coursesData = coursesRes.data || [];
+      const enrollmentsData = enrollmentsRes.data || [];
+      const certificatesData = certificatesRes.data || [];
+      const attendanceData = attendanceRes.data || [];
+
+      // Filter only students (non-admin users)
+      const studentsData = usersData.filter((u) => u.role !== 'admin');
+
+      setStudents(studentsData);
+      setCourses(coursesData);
+      setEnrollments(enrollmentsData);
+      setCertificates(certificatesData);
+      setAttendance(attendanceData);
+
       setStats({
-        totalUsers: usersRes.data.length,
-        totalCourses: coursesRes.data.length,
-        totalEnrollments: enrollmentsRes.data.length,
-        activeCourses: coursesRes.data.filter(c => c.status === 'active').length,
+        totalStudents: studentsData.length,
+        totalCourses: coursesData.length,
+        totalEnrollments: enrollmentsData.length,
+        totalCertificates: certificatesData.filter((c) => c.status === 'GENERATED').length,
+        totalAttendance: attendanceData.length,
       });
-      setCourseStats(analyticsRes.data || []);
     } catch (error) {
-      console.error('Error fetching stats:', error);
+      console.error('Error fetching dashboard data:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const COLORS = ['#3b82f6', '#f97316', '#10b981', '#8b5cf6'];
+  // Get student enrollment history
+  const getStudentHistory = () => {
+    return students.map((student) => {
+      const studentEnrollments = enrollments.filter((e) => e.user_id === student.id);
+      const studentCertificates = certificates.filter((c) => c.user_id === student.id);
+      const studentAttendance = attendance.filter((a) => a.user_id === student.id);
+
+      return {
+        ...student,
+        enrollments: studentEnrollments.map((enrollment) => {
+          const course = courses.find((c) => c.id === enrollment.course_id);
+          const certificate = studentCertificates.find(
+            (c) => c.course_id === enrollment.course_id
+          );
+          
+          // Get detailed attendance for this course
+          const courseAttendance = studentAttendance.filter(
+            (a) => a.course_id === enrollment.course_id
+          );
+          
+          const daysPresent = courseAttendance.filter((a) => a.status === 'present').length;
+          const daysAbsent = courseAttendance.filter((a) => a.status === 'absent').length;
+          const daysLate = courseAttendance.filter((a) => a.status === 'late').length;
+          const daysExcused = courseAttendance.filter((a) => a.status === 'excused').length;
+          const totalDays = course?.total_days || 0;
+          const attendancePercentage = totalDays > 0 
+            ? Math.round((daysPresent / totalDays) * 100) 
+            : 0;
+
+          // Calculate duration
+          const enrollmentDate = enrollment.created_at ? new Date(enrollment.created_at) : null;
+          const completionDate = enrollment.completed_at ? new Date(enrollment.completed_at) : null;
+          const duration = completionDate && enrollmentDate && !isNaN(completionDate.getTime()) && !isNaN(enrollmentDate.getTime())
+            ? Math.ceil((completionDate - enrollmentDate) / (1000 * 60 * 60 * 24))
+            : null;
+
+          // Get day of week for enrollment and completion
+          const enrollmentDay = enrollmentDate && !isNaN(enrollmentDate.getTime()) 
+            ? enrollmentDate.toLocaleDateString('en-US', { weekday: 'long' })
+            : null;
+          const completionDay = completionDate && !isNaN(completionDate.getTime())
+            ? completionDate.toLocaleDateString('en-US', { weekday: 'long' })
+            : null;
+
+          // Performance metrics
+          const performance = {
+            progress: enrollment.progress || 0,
+            attendanceRate: attendancePercentage,
+            daysPresent,
+            daysAbsent,
+            daysLate,
+            daysExcused,
+            totalDays,
+            status: enrollment.status,
+          };
+
+          return {
+            ...enrollment,
+            course,
+            certificate,
+            enrollmentDate: enrollment.created_at,
+            enrollmentDay,
+            completionDate: enrollment.completed_at,
+            completionDay,
+            duration,
+            attendance: courseAttendance.sort((a, b) => new Date(a.date) - new Date(b.date)),
+            performance,
+          };
+        }),
+        totalEnrollments: studentEnrollments.length,
+        totalCertificates: studentCertificates.filter((c) => c.status === 'GENERATED').length,
+      };
+    });
+  };
+
+  // Get course enrollment summary
+  const getCourseSummary = () => {
+    return courses.map((course) => {
+      const courseEnrollments = enrollments.filter((e) => e.course_id === course.id);
+      const courseCertificates = certificates.filter(
+        (c) => c.course_id === course.id && c.status === 'GENERATED'
+      );
+      const courseAttendance = attendance.filter((a) => a.course_id === course.id);
+
+      // Get enrollment details
+      const enrollmentDetails = courseEnrollments.map((enrollment) => {
+        const student = students.find((s) => s.id === enrollment.user_id);
+        const certificate = certificates.find(
+          (c) => c.course_id === course.id && c.user_id === enrollment.user_id
+        );
+        const studentAttendance = courseAttendance.filter(
+          (a) => a.user_id === enrollment.user_id
+        );
+        const daysPresent = studentAttendance.filter((a) => a.status === 'present').length;
+
+        return {
+          student: student?.full_name || student?.email || 'Unknown',
+          studentEmail: student?.email,
+          enrolledDate: enrollment.created_at,
+          completionDate: enrollment.completed_at,
+          status: enrollment.status,
+          progress: enrollment.progress,
+          certificateStatus: certificate?.status || 'N/A',
+          daysPresent,
+          totalDays: course.total_days || 0,
+          duration: enrollment.completed_at && enrollment.created_at
+            ? Math.ceil(
+                (new Date(enrollment.completed_at) - new Date(enrollment.created_at)) /
+                  (1000 * 60 * 60 * 24)
+              )
+            : null,
+        };
+      });
+
+      return {
+        ...course,
+        totalEnrollments: courseEnrollments.length,
+        totalCertificates: courseCertificates.length,
+        enrollmentDetails,
+      };
+    });
+  };
+
+  const studentHistory = getStudentHistory();
+  const courseSummary = getCourseSummary();
+
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return 'N/A';
+      return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+      });
+    } catch (error) {
+      console.error('Error formatting date:', dateString, error);
+      return 'N/A';
+    }
+  };
+
+  const formatDateTime = (dateString) => {
+    if (!dateString) return 'N/A';
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return 'N/A';
+      return date.toLocaleString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    } catch (error) {
+      console.error('Error formatting date:', dateString, error);
+      return 'N/A';
+    }
+  };
+
+  const getDayOfWeek = (dateString) => {
+    if (!dateString) return null;
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return null;
+      return date.toLocaleDateString('en-US', { weekday: 'long' });
+    } catch (error) {
+      return null;
+    }
+  };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-orange-50/20 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-600"></div>
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="flex items-center gap-3 text-slate-600">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-500" />
+          <span className="text-sm font-medium">Loading dashboard...</span>
+        </div>
       </div>
     );
   }
 
-  const statCards = [
-    {
-      label: 'Total Users',
-      value: stats.totalUsers,
-      icon: Users,
-      gradient: 'from-blue-600 to-blue-800',
-      bgGradient: 'from-blue-50 to-blue-100',
-    },
-    {
-      label: 'Total Courses',
-      value: stats.totalCourses,
-      icon: BookOpen,
-      gradient: 'from-orange-500 to-orange-600',
-      bgGradient: 'from-orange-50 to-orange-100',
-    },
-    {
-      label: 'Enrollments',
-      value: stats.totalEnrollments,
-      icon: GraduationCap,
-      gradient: 'from-blue-600 to-blue-700',
-      bgGradient: 'from-blue-50 to-blue-100',
-    },
-    {
-      label: 'Active Courses',
-      value: stats.activeCourses,
-      icon: Activity,
-      gradient: 'from-slate-700 to-slate-900',
-      bgGradient: 'from-slate-50 to-slate-100',
-    },
-  ];
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-orange-50/20">
-      {/* Hero Header */}
-      <div className="bg-gradient-to-r from-slate-900 via-blue-900 to-slate-900 text-white py-12">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-            <div>
-              <div className="inline-flex items-center px-4 py-2 rounded-full text-xs font-semibold tracking-widest uppercase bg-orange-500/20 text-orange-300 border border-orange-400/30 mb-6 backdrop-blur-sm">
-                <Shield className="w-3 h-3 mr-2" />
-                Admin Portal
+    <div className="min-h-screen bg-white">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Header */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-slate-900 mb-2">Admin Dashboard</h1>
+          <p className="text-slate-600">Student history, course enrollments, and analytics</p>
+        </div>
+
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-8">
+          <div className="bg-white border border-slate-200 rounded-lg p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-slate-500 mb-1">Total Students</p>
+                <p className="text-2xl font-bold text-slate-900">{stats.totalStudents}</p>
               </div>
-              <h1 className="text-4xl md:text-5xl font-bold mb-3 tracking-tight">
-                Admin Dashboard
-              </h1>
-              <p className="text-xl text-slate-200">Overview of your learning management system</p>
+              <Users className="w-8 h-8 text-orange-500" />
+            </div>
+          </div>
+          <div className="bg-white border border-slate-200 rounded-lg p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-slate-500 mb-1">Total Courses</p>
+                <p className="text-2xl font-bold text-slate-900">{stats.totalCourses}</p>
+              </div>
+              <BookOpen className="w-8 h-8 text-blue-500" />
+            </div>
+          </div>
+          <div className="bg-white border border-slate-200 rounded-lg p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-slate-500 mb-1">Enrollments</p>
+                <p className="text-2xl font-bold text-slate-900">{stats.totalEnrollments}</p>
+              </div>
+              <TrendingUp className="w-8 h-8 text-green-500" />
+            </div>
+          </div>
+          <div className="bg-white border border-slate-200 rounded-lg p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-slate-500 mb-1">Certificates</p>
+                <p className="text-2xl font-bold text-slate-900">{stats.totalCertificates}</p>
+              </div>
+              <Award className="w-8 h-8 text-amber-500" />
+            </div>
+          </div>
+          <div className="bg-white border border-slate-200 rounded-lg p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-slate-500 mb-1">Attendance Records</p>
+                <p className="text-2xl font-bold text-slate-900">{stats.totalAttendance}</p>
+              </div>
+              <UserCheck className="w-8 h-8 text-purple-500" />
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Stats Cards */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-8 relative z-10 mb-8">
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          {statCards.map((stat, index) => {
-            const Icon = stat.icon;
-            return (
-              <div
-                key={index}
-                className="bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-100 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1"
-              >
-                <div className={`bg-gradient-to-br ${stat.bgGradient} p-6`}>
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <p className="text-sm font-semibold text-gray-600 mb-2 uppercase tracking-wide">
-                        {stat.label}
-                      </p>
-                      <p className={`text-4xl font-bold bg-gradient-to-r ${stat.gradient} bg-clip-text text-transparent`}>
-                        {stat.value}
-                      </p>
-                    </div>
-                    <div className={`bg-gradient-to-br ${stat.gradient} p-4 rounded-2xl shadow-lg`}>
-                      <Icon className="w-8 h-8 text-white" />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Charts */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-8">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <div className="bg-white rounded-2xl shadow-xl p-8 border border-gray-100">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="bg-gradient-to-br from-blue-600 to-blue-800 p-3 rounded-xl shadow-lg">
-                <TrendingUp className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <h2 className="text-2xl font-bold text-gray-900">Course Enrollments</h2>
-                <p className="text-sm text-gray-500">Top courses by enrollment</p>
-              </div>
+        {/* Student History Section */}
+        <div className="mb-8">
+          <div className="bg-white border border-slate-200 rounded-lg">
+            <div className="px-6 py-4 border-b border-slate-200">
+              <h2 className="text-xl font-semibold text-slate-900 flex items-center gap-2">
+                <Users className="w-5 h-5" />
+                Student History
+              </h2>
             </div>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={courseStats.slice(0, 10)}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                <XAxis dataKey="course_title" angle={-45} textAnchor="end" height={100} stroke="#6b7280" />
-                <YAxis stroke="#6b7280" />
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: '#fff', 
-                    border: '1px solid #e5e7eb', 
-                    borderRadius: '8px',
-                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
-                  }} 
-                />
-                <Legend />
-                <Bar dataKey="total_enrollments" fill="#3b82f6" radius={[8, 8, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-slate-200">
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                      Student
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                      Email
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                      Courses Enrolled
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                      Certificates
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                      Details
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-slate-200">
+                  {studentHistory.map((student) => (
+                    <tr key={student.id} className="hover:bg-slate-50">
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm font-medium text-slate-900">
+                          {student.full_name || 'N/A'}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-slate-500">{student.email}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-slate-900">{student.totalEnrollments}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-slate-900">{student.totalCertificates}</div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="text-sm text-slate-600">
+                          {student.enrollments.length > 0 ? (
+                            <details className="cursor-pointer">
+                              <summary className="text-orange-600 hover:text-orange-700">
+                                View {student.enrollments.length} course(s)
+                              </summary>
+                              <div className="mt-2 space-y-4 pl-4 border-l-2 border-slate-200">
+                                {student.enrollments.map((enrollment, idx) => (
+                                  <div key={idx} className="pt-2 pb-3 border-b border-slate-100 last:border-0">
+                                    <div className="font-semibold text-slate-900 text-sm mb-2">
+                                      {enrollment.course?.title || 'Unknown Course'}
+                                    </div>
+                                    
+                                    {/* Enrollment & Completion Dates */}
+                                    <div className="bg-slate-50 rounded-md p-2 mb-2">
+                                      <div className="text-xs space-y-1">
+                                        <div className="flex items-center gap-2">
+                                          <Calendar className="w-3 h-3 text-blue-500" />
+                                          <span className="text-slate-600">Enrolled:</span>
+                                          <span className="font-medium text-slate-900">
+                                            {formatDate(enrollment.enrollmentDate)}
+                                          </span>
+                                          {enrollment.enrollmentDay && (
+                                            <span className="text-slate-400">({enrollment.enrollmentDay})</span>
+                                          )}
+                                        </div>
+                                        {enrollment.completionDate && (
+                                          <div className="flex items-center gap-2">
+                                            <CheckCircle className="w-3 h-3 text-green-500" />
+                                            <span className="text-slate-600">Completed:</span>
+                                            <span className="font-medium text-slate-900">
+                                              {formatDate(enrollment.completionDate)}
+                                            </span>
+                                            {enrollment.completionDay && (
+                                              <span className="text-slate-400">({enrollment.completionDay})</span>
+                                            )}
+                                            {enrollment.duration && (
+                                              <span className="text-slate-500 ml-1">
+                                                · Duration: {enrollment.duration} days
+                                              </span>
+                                            )}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
 
-          <div className="bg-white rounded-2xl shadow-xl p-8 border border-gray-100">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="bg-gradient-to-br from-orange-500 to-orange-600 p-3 rounded-xl shadow-lg">
-                <Activity className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <h2 className="text-2xl font-bold text-gray-900">Course Completion</h2>
-                <p className="text-sm text-gray-500">Completion rates by course</p>
-              </div>
-            </div>
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie
-                  data={courseStats.slice(0, 5)}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={({ course_title, completed }) => `${course_title}: ${completed}`}
-                  outerRadius={80}
-                  fill="#8884d8"
-                  dataKey="completed"
-                >
-                  {courseStats.slice(0, 5).map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                    {/* Performance Metrics */}
+                                    <div className="grid grid-cols-2 gap-2 mb-2">
+                                      <div className="bg-blue-50 rounded-md p-2">
+                                        <div className="text-xs text-slate-600">Progress</div>
+                                        <div className="text-sm font-bold text-blue-700">
+                                          {enrollment.performance.progress}%
+                                        </div>
+                                      </div>
+                                      <div className="bg-green-50 rounded-md p-2">
+                                        <div className="text-xs text-slate-600">Attendance Rate</div>
+                                        <div className="text-sm font-bold text-green-700">
+                                          {enrollment.performance.attendanceRate}%
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    {/* Attendance Breakdown */}
+                                    <div className="mb-2">
+                                      <div className="text-xs font-medium text-slate-700 mb-1">Attendance Details:</div>
+                                      <div className="text-xs text-slate-600 space-y-0.5">
+                                        <div>
+                                          Present: <span className="font-medium text-green-600">
+                                            {enrollment.performance.daysPresent}
+                                          </span>
+                                          {' / '}
+                                          Absent: <span className="font-medium text-red-600">
+                                            {enrollment.performance.daysAbsent}
+                                          </span>
+                                          {' / '}
+                                          Late: <span className="font-medium text-amber-600">
+                                            {enrollment.performance.daysLate}
+                                          </span>
+                                          {' / '}
+                                          Excused: <span className="font-medium text-blue-600">
+                                            {enrollment.performance.daysExcused}
+                                          </span>
+                                          {' / '}
+                                          Total Days: <span className="font-medium text-slate-900">
+                                            {enrollment.performance.totalDays}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    {/* Attendance Timeline */}
+                                    {enrollment.attendance && enrollment.attendance.length > 0 && (
+                                      <details className="mt-2">
+                                        <summary className="text-xs text-orange-600 cursor-pointer hover:text-orange-700">
+                                          View Attendance Timeline ({enrollment.attendance.length} records)
+                                        </summary>
+                                        <div className="mt-2 space-y-1 pl-2 border-l-2 border-orange-200">
+                                          {enrollment.attendance.map((att, attIdx) => (
+                                            <div key={attIdx} className="text-xs text-slate-600 py-1">
+                                              <span className="font-medium">
+                                                {formatDate(att.date)}
+                                              </span>
+                                              {' - '}
+                                              <span className={`font-medium ${
+                                                att.status === 'present' ? 'text-green-600' :
+                                                att.status === 'absent' ? 'text-red-600' :
+                                                att.status === 'late' ? 'text-amber-600' :
+                                                'text-blue-600'
+                                              }`}>
+                                                {att.status.toUpperCase()}
+                                              </span>
+                                              {att.session && (
+                                                <span className="text-slate-400 ml-1">
+                                                  ({att.session})
+                                                </span>
+                                              )}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </details>
+                                    )}
+
+                                    {/* Certificate Status */}
+                                    <div className="mt-2 pt-2 border-t border-slate-100">
+                                      <div className="text-xs text-slate-600">
+                                        Certificate:{' '}
+                                        {enrollment.certificate?.status === 'GENERATED' ? (
+                                          <span className="text-green-600 font-medium flex items-center gap-1">
+                                            <CheckCircle className="w-3 h-3" />
+                                            Generated
+                                          </span>
+                                        ) : enrollment.certificate?.status === 'PENDING_APPROVAL' ? (
+                                          <span className="text-amber-600 font-medium">Pending Approval</span>
+                                        ) : (
+                                          <span className="text-slate-400 font-medium">Not Available</span>
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    {/* Status Badge */}
+                                    <div className="mt-2">
+                                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                                        enrollment.status === 'completed' 
+                                          ? 'bg-green-100 text-green-700'
+                                          : enrollment.status === 'enrolled'
+                                          ? 'bg-blue-100 text-blue-700'
+                                          : 'bg-slate-100 text-slate-700'
+                                      }`}>
+                                        {enrollment.status.toUpperCase()}
+                                      </span>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </details>
+                          ) : (
+                            <span className="text-slate-400">No enrollments</span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
                   ))}
-                </Pie>
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: '#fff', 
-                    border: '1px solid #e5e7eb', 
-                    borderRadius: '8px',
-                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
-                  }} 
-                />
-              </PieChart>
-            </ResponsiveContainer>
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Quick Actions */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-12">
-        <div className="bg-white rounded-2xl shadow-xl p-8 border border-gray-100">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="bg-gradient-to-br from-slate-700 to-slate-900 p-3 rounded-xl shadow-lg">
-              <Award className="w-6 h-6 text-white" />
+        {/* Course Summary Section */}
+        <div>
+          <div className="bg-white border border-slate-200 rounded-lg">
+            <div className="px-6 py-4 border-b border-slate-200">
+              <h2 className="text-xl font-semibold text-slate-900 flex items-center gap-2">
+                <BarChart3 className="w-5 h-5" />
+                Course Enrollment Summary
+              </h2>
             </div>
-            <div>
-              <h2 className="text-2xl font-bold text-gray-900">Quick Actions</h2>
-              <p className="text-sm text-gray-500">Manage your LMS quickly</p>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-slate-200">
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                      Course
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                      Total Enrollments
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                      Certificates Generated
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                      Duration
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                      Enrollment Details
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-slate-200">
+                  {courseSummary.map((course) => (
+                    <tr key={course.id} className="hover:bg-slate-50">
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm font-medium text-slate-900">{course.title}</div>
+                        <div className="text-xs text-slate-500">{course.total_days || 0} days</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-slate-900">{course.totalEnrollments}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-slate-900">{course.totalCertificates}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-slate-900">
+                          {course.total_days || 'N/A'} days
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="text-sm text-slate-600">
+                          {course.enrollmentDetails.length > 0 ? (
+                            <details className="cursor-pointer">
+                              <summary className="text-orange-600 hover:text-orange-700">
+                                View {course.enrollmentDetails.length} enrollment(s)
+                              </summary>
+                              <div className="mt-2 space-y-3 pl-4 border-l-2 border-slate-200">
+                                {course.enrollmentDetails.map((detail, idx) => (
+                                  <div key={idx} className="pt-2">
+                                    <div className="font-medium text-slate-900">{detail.student}</div>
+                                    <div className="text-xs text-slate-500 space-y-1 mt-1">
+                                      <div>
+                                        Email: <span className="font-medium">{detail.studentEmail}</span>
+                                      </div>
+                                      <div>
+                                        Enrolled: <span className="font-medium">
+                                          {formatDateTime(detail.enrolledDate)}
+                                        </span>
+                                      </div>
+                                      <div>
+                                        Status: <span className="font-medium">{detail.status}</span>
+                                      </div>
+                                      <div>
+                                        Progress: <span className="font-medium">{detail.progress}%</span>
+                                      </div>
+                                      <div>
+                                        Days Present: <span className="font-medium">
+                                          {detail.daysPresent} / {detail.totalDays}
+                                        </span>
+                                      </div>
+                                      <div>
+                                        Certificate:{' '}
+                                        {detail.certificateStatus === 'GENERATED' ? (
+                                          <span className="text-green-600 font-medium flex items-center gap-1">
+                                            <CheckCircle className="w-3 h-3" />
+                                            Generated
+                                          </span>
+                                        ) : detail.certificateStatus === 'PENDING_APPROVAL' ? (
+                                          <span className="text-amber-600 font-medium">Pending</span>
+                                        ) : (
+                                          <span className="text-slate-400 font-medium">Not Available</span>
+                                        )}
+                                      </div>
+                                      {detail.completionDate && (
+                                        <div>
+                                          Completed: <span className="font-medium">
+                                            {formatDateTime(detail.completionDate)}
+                                          </span>
+                                          {detail.duration && (
+                                            <span className="text-slate-400 ml-2">
+                                              (Duration: {detail.duration} days)
+                                            </span>
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </details>
+                          ) : (
+                            <span className="text-slate-400">No enrollments</span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            <Link
-              to="/admin/users"
-              className="group p-6 border-2 border-gray-200 rounded-2xl hover:border-blue-500 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 bg-gradient-to-br from-white to-blue-50/30"
-            >
-              <div className="flex items-center justify-between mb-4">
-                <div className="bg-blue-100 p-4 rounded-xl group-hover:bg-blue-600 transition-all duration-300">
-                  <Users className="w-7 h-7 text-blue-600 group-hover:text-white transition-colors" />
-                </div>
-                <ArrowRight className="w-5 h-5 text-gray-400 group-hover:text-blue-600 transition-colors" />
-              </div>
-              <h3 className="font-bold text-gray-900 mb-2 text-lg">Manage Users</h3>
-              <p className="text-sm text-gray-600">View and edit user accounts</p>
-            </Link>
-            <Link
-              to="/admin/courses"
-              className="group p-6 border-2 border-gray-200 rounded-2xl hover:border-orange-500 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 bg-gradient-to-br from-white to-orange-50/30"
-            >
-              <div className="flex items-center justify-between mb-4">
-                <div className="bg-orange-100 p-4 rounded-xl group-hover:bg-orange-600 transition-all duration-300">
-                  <BookOpen className="w-7 h-7 text-orange-600 group-hover:text-white transition-colors" />
-                </div>
-                <ArrowRight className="w-5 h-5 text-gray-400 group-hover:text-orange-600 transition-colors" />
-              </div>
-              <h3 className="font-bold text-gray-900 mb-2 text-lg">Manage Courses</h3>
-              <p className="text-sm text-gray-600">Create and edit courses</p>
-            </Link>
-            <Link
-              to="/admin/attendance"
-              className="group p-6 border-2 border-gray-200 rounded-2xl hover:border-blue-500 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 bg-gradient-to-br from-white to-blue-50/30"
-            >
-              <div className="flex items-center justify-between mb-4">
-                <div className="bg-blue-100 p-4 rounded-xl group-hover:bg-blue-600 transition-all duration-300">
-                  <Activity className="w-7 h-7 text-blue-600 group-hover:text-white transition-colors" />
-                </div>
-                <ArrowRight className="w-5 h-5 text-gray-400 group-hover:text-blue-600 transition-colors" />
-              </div>
-              <h3 className="font-bold text-gray-900 mb-2 text-lg">Mark Attendance</h3>
-              <p className="text-sm text-gray-600">Record student attendance</p>
-            </Link>
-            <Link
-              to="/admin/reports"
-              className="group p-6 border-2 border-gray-200 rounded-2xl hover:border-orange-500 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 bg-gradient-to-br from-white to-orange-50/30"
-            >
-              <div className="flex items-center justify-between mb-4">
-                <div className="bg-orange-100 p-4 rounded-xl group-hover:bg-orange-600 transition-all duration-300">
-                  <TrendingUp className="w-7 h-7 text-orange-600 group-hover:text-white transition-colors" />
-                </div>
-                <ArrowRight className="w-5 h-5 text-gray-400 group-hover:text-orange-600 transition-colors" />
-              </div>
-              <h3 className="font-bold text-gray-900 mb-2 text-lg">View Reports</h3>
-              <p className="text-sm text-gray-600">Generate and export reports</p>
-            </Link>
           </div>
         </div>
       </div>

@@ -1,8 +1,8 @@
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { 
-  LayoutDashboard, Users, BookOpen, ClipboardCheck, BarChart3, 
-  GraduationCap, LogOut, User, Bell
+  LayoutDashboard, Users, BookOpen, ClipboardCheck, 
+  GraduationCap, LogOut, User, Bell, Award
 } from 'lucide-react';
 
 export const Layout = ({ children }) => {
@@ -18,11 +18,11 @@ export const Layout = ({ children }) => {
   const navItems = isAdmin
     ? [
         { path: '/admin', label: 'Dashboard', icon: LayoutDashboard },
-        { path: '/admin/users', label: 'Users', icon: Users },
-        { path: '/admin/courses', label: 'Courses', icon: BookOpen },
-        { path: '/admin/attendance', label: 'Attendance', icon: ClipboardCheck },
-        { path: '/admin/reports', label: 'Reports', icon: BarChart3 },
-        { path: '/dashboard', label: 'User Portal', icon: GraduationCap },
+        { path: '/admin/users', label: 'User Management', icon: Users },
+        { path: '/admin/courses', label: 'Course Management', icon: BookOpen },
+        { path: '/admin/attendance', label: 'Attendance Management', icon: ClipboardCheck },
+        { path: '/admin/certificates', label: 'Certificate Management', icon: Award },
+        { path: '/dashboard', label: 'Student Portal', icon: GraduationCap },
       ]
     : [
         { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -32,21 +32,20 @@ export const Layout = ({ children }) => {
       ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-orange-50/30 to-amber-50/30">
-      <nav className="bg-white/80 backdrop-blur-md shadow-xl border-b border-gray-200/50 sticky top-0 z-50">
+    <div className="min-h-screen bg-white">
+      <nav className="bg-white border-b border-slate-200 sticky top-0 z-50 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
             <div className="flex items-center">
-              <Link to={isAdmin ? '/admin' : '/dashboard'} className="flex items-center space-x-2">
-                <div className="bg-gradient-to-br from-orange-600 to-amber-600 p-2 rounded-lg">
-                  <GraduationCap className="w-6 h-6 text-white" />
+              <Link to="/about" className="flex items-center space-x-3">
+                <div className="bg-gradient-to-br from-orange-600 to-orange-500 p-2 rounded-lg shadow-sm">
+                  <GraduationCap className="w-5 h-5 text-white" />
                 </div>
-                {/* Logo text in soft orange for a subtle brand accent */}
-                <h1 className="text-2xl font-extrabold text-orange-500">
+                <h1 className="text-xl font-bold text-slate-900 tracking-tight">
                   LMS Platform
                 </h1>
               </Link>
-              <div className="hidden md:ml-8 md:flex md:space-x-1">
+              <div className="hidden md:ml-10 md:flex md:space-x-1">
                 {navItems.map((item) => {
                   const Icon = item.icon;
                   const isActive = location.pathname === item.path;
@@ -54,10 +53,10 @@ export const Layout = ({ children }) => {
                     <Link
                       key={item.path}
                       to={item.path}
-                      className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 ${
+                      className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                         isActive
-                          ? 'text-orange-600'
-                          : 'text-gray-600 hover:text-orange-700'
+                          ? 'text-orange-600 bg-orange-50'
+                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
                       }`}
                     >
                       <Icon className="w-4 h-4" />
@@ -70,25 +69,25 @@ export const Layout = ({ children }) => {
             <div className="flex items-center space-x-4">
               <div className="hidden sm:flex items-center space-x-3">
                 <div className="text-right">
-                  <p className="text-sm font-medium text-gray-900">
+                  <p className="text-sm font-medium text-slate-900">
                     {profile?.full_name || 'User'}
                   </p>
-                  <p className="text-xs text-gray-500">{profile?.email}</p>
+                  <p className="text-xs text-slate-500">{profile?.email}</p>
                 </div>
-                <div className="h-10 w-10 rounded-full bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center">
-                  <User className="w-5 h-5 text-white" />
+                <div className="h-9 w-9 rounded-full bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center shadow-sm">
+                  <User className="w-4 h-4 text-white" />
                 </div>
               </div>
-              <span className={`px-3 py-1 text-xs font-semibold rounded-full ${
+              <span className={`px-3 py-1 text-xs font-medium rounded-full ${
                 profile?.role === 'admin' 
                   ? 'bg-slate-900 text-white'
-                  : 'bg-orange-100 text-orange-800'
+                  : 'bg-orange-100 text-orange-700'
               }`}>
                 {profile?.role?.toUpperCase()}
               </span>
               <button
                 onClick={handleSignOut}
-                className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors duration-200"
+                className="p-2 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
                 title="Sign Out"
               >
                 <LogOut className="w-5 h-5" />
@@ -97,7 +96,7 @@ export const Layout = ({ children }) => {
           </div>
         </div>
       </nav>
-      <main className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+      <main className="bg-white">
         {children}
       </main>
     </div>

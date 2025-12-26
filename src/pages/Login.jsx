@@ -61,17 +61,23 @@ export const Login = () => {
       } else {
         // Sign in existing user
         console.log('🔐 Attempting to sign in:', email);
-        const result = await signIn(email, password);
-        console.log('✅ Sign in successful:', result);
         
-        // Wait a moment for auth state to update and profile to be fetched
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        // Add timeout to prevent infinite loading
+        const signInWithTimeout = Promise.race([
+          signIn(email, password),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Sign in request timed out. Please check your connection and try again.')), 8000)
+          )
+        ]);
         
-        setLoading(false);
+        await signInWithTimeout;
+        console.log('✅ Sign in successful');
         
-        // The redirect will be handled by useEffect hooks that watch user and profile
-        // But we can also manually check and redirect if needed
-        // Note: user and profile are from the hook, they will update via useEffect
+        // Reset loading after a short delay to allow redirect
+        // If redirect doesn't happen, user can try again
+        setTimeout(() => {
+          setLoading(false);
+        }, 2000);
       }
     } catch (err) {
       console.error('❌ Sign in/up error:', err);
@@ -85,14 +91,16 @@ export const Login = () => {
       // Provide more specific error messages
       let errorMessage = err.message || (isSignUp ? 'Failed to sign up' : 'Failed to sign in');
       
-      if (err.message?.includes('Invalid login credentials')) {
+      if (err.message?.includes('Invalid login credentials') || err.message?.includes('invalid')) {
         errorMessage = 'Invalid email or password. Please try again.';
       } else if (err.message?.includes('Email not confirmed')) {
         errorMessage = 'Please verify your email address before signing in.';
-      } else if (err.message?.includes('network') || err.message?.includes('fetch')) {
+      } else if (err.message?.includes('network') || err.message?.includes('fetch') || err.message?.includes('Network')) {
         errorMessage = 'Network error. Please check your connection and try again.';
-      } else if (err.message?.includes('supabase') || err.message?.includes('URL')) {
+      } else if (err.message?.includes('supabase') || err.message?.includes('URL') || err.message?.includes('Configuration')) {
         errorMessage = 'Configuration error. Please check Supabase settings.';
+      } else if (err.message?.includes('timeout') || err.message?.includes('timed out')) {
+        errorMessage = 'Request timed out. Please check your connection and try again.';
       }
       
       setError(errorMessage);

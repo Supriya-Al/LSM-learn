@@ -1,0 +1,18 @@
+# Commands to Run After Creating GitHub Repository
+
+# Step 1: Create repository on GitHub first at https://github.com/new
+# Name: lms-backend
+# Make it PUBLIC
+# DO NOT initialize with README
+
+# Step 2: Replace YOUR_USERNAME with your GitHub username, then run:
+
+git remote add origin https://github.com/YOUR_USERNAME/lms-backend.git
+git branch -M main
+git push -u origin main
+
+# Example (if username is "john"):
+# git remote add origin https://github.com/john/lms-backend.git
+# git branch -M main
+# git push -u origin main
+

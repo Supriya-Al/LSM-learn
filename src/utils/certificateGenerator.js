@@ -96,30 +96,42 @@ export const generateCertificate = (certificateData) => {
   const dateWidth = pdf.getTextWidth(dateText);
   pdf.text(dateText, (pageWidth - dateWidth) / 2, 4.8);
 
-  // Signatures section
+  // Signatures section - Professional layout with lines above labels
   const signatureY = 6.5;
-  const signatureSpacing = 2.5;
-  const signatureStartX = margin + 1;
-  const signatureWidth = (contentWidth - 2) / 3;
-
-  // Signature lines
-  pdf.setDrawColor(150, 150, 150);
-  pdf.setLineWidth(0.01);
+  const signatureAreaStartX = margin + 1;
+  const signatureAreaWidth = contentWidth - 2;
+  const signatureCount = 3;
+  const signatureSectionWidth = signatureAreaWidth / signatureCount;
+  const lineLength = 2.0; // Fixed line length for consistent appearance
   
-  // Head of Training
-  pdf.line(signatureStartX, signatureY, signatureStartX + signatureWidth - 0.2, signatureY);
+  // Set styling for signature elements
+  pdf.setDrawColor(0, 0, 0); // Black lines
+  pdf.setLineWidth(0.015); // Slightly thicker for professional look
   pdf.setFontSize(10);
-  pdf.setTextColor(80, 80, 80);
+  pdf.setTextColor(0, 0, 0); // Black text
   pdf.setFont('helvetica', 'bold');
-  pdf.text('Head of Training', signatureStartX + (signatureWidth - 0.2) / 2 - pdf.getTextWidth('Head of Training') / 2, signatureY + 0.15);
   
-  // Course Instructor
-  pdf.line(signatureStartX + signatureSpacing, signatureY, signatureStartX + signatureSpacing + signatureWidth - 0.2, signatureY);
-  pdf.text('Course Instructor', signatureStartX + signatureSpacing + (signatureWidth - 0.2) / 2 - pdf.getTextWidth('Course Instructor') / 2, signatureY + 0.15);
+  // Draw each signature: line above, label below (centered)
+  const signatures = [
+    'Head of Training',
+    'Course Instructor',
+    'Platform Director'
+  ];
   
-  // Platform Director
-  pdf.line(signatureStartX + (signatureSpacing * 2), signatureY, signatureStartX + (signatureSpacing * 2) + signatureWidth - 0.2, signatureY);
-  pdf.text('Platform Director', signatureStartX + (signatureSpacing * 2) + (signatureWidth - 0.2) / 2 - pdf.getTextWidth('Platform Director') / 2, signatureY + 0.15);
+  signatures.forEach((label, index) => {
+    // Calculate center position of this signature section
+    const sectionCenterX = signatureAreaStartX + (signatureSectionWidth * index) + (signatureSectionWidth / 2);
+    const lineStartX = sectionCenterX - (lineLength / 2);
+    const lineEndX = sectionCenterX + (lineLength / 2);
+    
+    // Draw the signature line (black, horizontal)
+    pdf.line(lineStartX, signatureY, lineEndX, signatureY);
+    
+    // Draw the label centered below the line
+    const labelWidth = pdf.getTextWidth(label);
+    const labelX = sectionCenterX - (labelWidth / 2);
+    pdf.text(label, labelX, signatureY + 0.18);
+  });
 
   return pdf;
 };

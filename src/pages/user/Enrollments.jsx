@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import api from '../../lib/api';
-import { downloadCertificate } from '../../utils/certificateGenerator';
 import { 
   BookOpen, 
   CheckCircle, 
@@ -64,10 +63,28 @@ export const Enrollments = () => {
 
   const fetchEnrollments = async () => {
     try {
-      const { data } = await api.get('/enrollments');
-      const enrollmentsData = data || [];
-      setEnrollments(enrollmentsData);
-      setFilteredEnrollments(enrollmentsData);
+      const { data: enrollmentsData } = await api.get('/enrollments');
+      const enrollments = enrollmentsData || [];
+      
+      // Fetch certificates for completed courses
+      try {
+        const { data: certificatesData } = await api.get('/certificates');
+        const certificates = certificatesData || [];
+        
+        // Map certificates to enrollments
+        const enrollmentsWithCertificates = enrollments.map(enrollment => {
+          const certificate = certificates.find(cert => cert.course_id === enrollment.course_id);
+          return { ...enrollment, certificate };
+        });
+        
+        setEnrollments(enrollmentsWithCertificates);
+        setFilteredEnrollments(enrollmentsWithCertificates);
+      } catch (certError) {
+        console.error('Error fetching certificates:', certError);
+        // Continue without certificates
+        setEnrollments(enrollments);
+        setFilteredEnrollments(enrollments);
+      }
     } catch (error) {
       console.error('Error fetching enrollments:', error);
       setEnrollments([]);
@@ -263,7 +280,7 @@ export const Enrollments = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
             <div>
-              <h1 className="text-4xl md:text-5xl font-bold mb-3 tracking-tight">My Learning</h1>
+              <h1 className="text-4xl md:text-5xl font-bold text-white mb-3 tracking-tight">Your Learning</h1>
               <p className="text-xl text-slate-200">Track your progress and continue your learning journey</p>
             </div>
           </div>
@@ -590,25 +607,75 @@ export const Enrollments = () => {
                             </button>
                           </>
                         )}
-                        {isCompleted && (
-                          <button 
+                        {isCompleted && enrollment.certificate?.status === 'GENERATED' && (
+                          <button
                             onClick={async () => {
                               try {
-                                const { data } = await api.get(`/certificates/${enrollment.course_id}`);
-                                if (data.eligible && data.certificateData) {
-                                  downloadCertificate(data.certificateData);
-                                } else {
-                                  alert('Certificate is not yet available.');
+                                console.log('Downloading certificate:', enrollment.certificate.id);
+                                const response = await api.get(`/certificates/${enrollment.certificate.id}/download`, {
+                                  responseType: 'blob',
+                                });
+                                
+                                // Check if response is actually a PDF (check content type)
+                                const contentType = response.headers['content-type'];
+                                console.log('Response content type:', contentType);
+                                
+                                if (contentType && contentType.includes('application/json')) {
+                                  // Server returned JSON error instead of PDF
+                                  const text = await response.data.text();
+                                  const errorData = JSON.parse(text);
+                                  throw new Error(errorData.error || 'Failed to generate PDF');
                                 }
+                                
+                                if (!contentType || !contentType.includes('application/pdf')) {
+                                  console.warn('Unexpected content type:', contentType);
+                                }
+                                
+                                // Create blob URL and trigger download
+                                const url = window.URL.createObjectURL(response.data);
+                                const link = document.createElement('a');
+                                link.href = url;
+                                link.setAttribute('download', `certificate-${enrollment.certificate.certificate_number || enrollment.certificate.id}.pdf`);
+                                document.body.appendChild(link);
+                                link.click();
+                                link.remove();
+                                window.URL.revokeObjectURL(url);
+                                console.log('Certificate downloaded successfully');
                               } catch (error) {
-                                alert(`Unable to generate certificate: ${error.response?.data?.error || error.message}`);
+                                console.error('Error downloading certificate:', error);
+                                console.error('Error details:', error.response);
+                                
+                                // Try to parse error if it's a blob
+                                if (error.response?.data instanceof Blob) {
+                                  try {
+                                    const text = await error.response.data.text();
+                                    const errorData = JSON.parse(text);
+                                    alert('Failed to download certificate: ' + (errorData.error || errorData.message || 'Unknown error'));
+                                  } catch (parseError) {
+                                    alert('Failed to download certificate. Please check server logs.');
+                                  }
+                                } else {
+                                  alert('Failed to download certificate: ' + (error.response?.data?.error || error.message || 'Unknown error'));
+                                }
                               }
                             }}
-                            className="flex items-center gap-2 px-6 py-3 bg-brand-orange text-white rounded-xl hover:bg-orange-600 transition-colors font-semibold shadow-md"
+                            className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-green-600 to-green-500 text-white rounded-xl hover:from-green-700 hover:to-green-600 transition-all font-semibold shadow-lg"
                           >
                             <Download className="w-5 h-5" />
                             Download Certificate
                           </button>
+                        )}
+                        {isCompleted && enrollment.certificate?.status === 'PENDING_APPROVAL' && (
+                          <div className="flex items-center gap-2 px-6 py-3 bg-yellow-100 text-yellow-800 rounded-xl border border-yellow-300">
+                            <Clock className="w-5 h-5" />
+                            <span className="font-semibold">Certificate Pending Approval</span>
+                          </div>
+                        )}
+                        {isCompleted && !enrollment.certificate && (
+                          <div className="flex items-center gap-2 px-6 py-3 bg-gray-100 text-gray-600 rounded-xl border border-gray-300">
+                            <Award className="w-5 h-5" />
+                            <span className="font-semibold">Certificate Not Available</span>
+                          </div>
                         )}
                         {isDropped && (
                         <button 

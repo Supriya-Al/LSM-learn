@@ -2,6 +2,8 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
 
 dotenv.config();
 
@@ -52,6 +54,15 @@ const verifyToken = async (req, res, next) => {
     res.status(401).json({ error: 'Token verification failed: ' + error.message });
   }
 };
+
+// Health check endpoint (for deployment monitoring)
+app.get('/', (req, res) => {
+  res.json({ 
+    status: 'ok', 
+    message: 'LMS Backend API is running',
+    timestamp: new Date().toISOString()
+  });
+});
 
 // Get user profile
 app.get('/api/profile', verifyToken, async (req, res) => {
@@ -143,6 +154,31 @@ app.put('/api/admin/users/:id', verifyToken, async (req, res) => {
 
     if (error) throw error;
     res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Admin: Delete user
+app.delete('/api/admin/users/:id', verifyToken, async (req, res) => {
+  try {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', req.user.id)
+      .single();
+
+    if (profile?.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    const { error } = await supabase
+      .from('profiles')
+      .delete()
+      .eq('id', req.params.id);
+
+    if (error) throw error;
+    res.json({ message: 'User deleted successfully' });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -306,6 +342,699 @@ app.delete('/api/admin/courses/:id', verifyToken, async (req, res) => {
     res.json({ message: 'Course deleted' });
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// Admin: Get course curriculum
+app.get('/api/admin/courses/:id/curriculum', verifyToken, async (req, res) => {
+  try {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', req.user.id)
+      .single();
+
+    if (profile?.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    const { data, error } = await supabase
+      .from('course_curriculum')
+      .select('*')
+      .eq('course_id', req.params.id)
+      .order('day_number', { ascending: true });
+
+    if (error) throw error;
+    res.json(data || []);
+  } catch (error) {
+    console.error('Error fetching curriculum:', error);
+    res.status(500).json({ error: error.message || 'Failed to fetch curriculum' });
+  }
+});
+
+// Admin: Save course curriculum
+app.post('/api/admin/courses/:id/curriculum', verifyToken, async (req, res) => {
+  try {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', req.user.id)
+      .single();
+
+    if (profile?.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    const { curriculum } = req.body; // Array of { day_number, video_url, pdf_url, quiz_data }
+
+    if (!Array.isArray(curriculum)) {
+      return res.status(400).json({ error: 'Curriculum must be an array' });
+    }
+
+    // Delete existing curriculum for this course
+    const { error: deleteError } = await supabase
+      .from('course_curriculum')
+      .delete()
+      .eq('course_id', req.params.id);
+
+    if (deleteError) {
+      console.error('Error deleting existing curriculum:', deleteError);
+    }
+
+    // Insert new curriculum
+    const curriculumToInsert = curriculum.map((item) => ({
+      course_id: req.params.id,
+      day_number: item.day_number,
+      video_url: item.video_url || null,
+      pdf_url: item.pdf_url || null,
+      quiz_data: item.quiz_data || null,
+    }));
+
+    const { data, error } = await supabase
+      .from('course_curriculum')
+      .insert(curriculumToInsert)
+      .select();
+
+    if (error) throw error;
+    res.json({ message: 'Curriculum saved successfully', data });
+  } catch (error) {
+    console.error('Error saving curriculum:', error);
+    res.status(500).json({ error: error.message || 'Failed to save curriculum' });
+  }
+});
+
+// Admin: Check certificate system status (diagnostic)
+app.get('/api/admin/certificates/status', verifyToken, async (req, res) => {
+  try {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', req.user.id)
+      .single();
+
+    if (profile?.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    const diagnostics = {
+      certificatesTableExists: false,
+      completedEnrollments: 0,
+      existingCertificates: 0,
+      missingCertificates: 0,
+      errors: []
+    };
+
+    // Check if certificates table exists
+    try {
+      const { error: tableError } = await supabase
+        .from('certificates')
+        .select('id')
+        .limit(1);
+      
+      if (tableError) {
+        diagnostics.errors.push({
+          check: 'certificates_table',
+          error: tableError.message,
+          hint: tableError.hint || 'Run certificates-schema.sql in Supabase SQL Editor'
+        });
+      } else {
+        diagnostics.certificatesTableExists = true;
+      }
+    } catch (err) {
+      diagnostics.errors.push({
+        check: 'certificates_table',
+        error: err.message
+      });
+    }
+
+    // Count completed enrollments
+    try {
+      const { data: enrollments, error: enrollError } = await supabase
+        .from('enrollments')
+        .select('id, user_id, course_id')
+        .eq('status', 'completed');
+      
+      if (!enrollError) {
+        diagnostics.completedEnrollments = enrollments?.length || 0;
+        
+        // Count existing certificates
+        if (diagnostics.certificatesTableExists && enrollments) {
+          for (const enrollment of enrollments) {
+            const { data: cert } = await supabase
+              .from('certificates')
+              .select('id')
+              .eq('user_id', enrollment.user_id)
+              .eq('course_id', enrollment.course_id)
+              .maybeSingle();
+            
+            if (cert) {
+              diagnostics.existingCertificates++;
+            } else {
+              diagnostics.missingCertificates++;
+            }
+          }
+        }
+      }
+    } catch (err) {
+      diagnostics.errors.push({
+        check: 'enrollments',
+        error: err.message
+      });
+    }
+
+    res.json(diagnostics);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Admin: Get all certificates (with filters)
+app.get('/api/admin/certificates', verifyToken, async (req, res) => {
+  try {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', req.user.id)
+      .single();
+
+    if (profile?.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    const { status } = req.query; // Optional filter: PENDING_APPROVAL, GENERATED, REJECTED
+
+    let query = supabase
+      .from('certificates')
+      .select(`
+        *,
+        user:profiles!user_id(id, full_name, email),
+        course:courses!course_id(id, title, description),
+        enrollment:enrollments!enrollment_id(id, progress, completed_at),
+        issued_by_profile:profiles!issued_by(id, full_name)
+      `)
+      .order('created_at', { ascending: false });
+
+    if (status) {
+      query = query.eq('status', status);
+    }
+
+    const { data, error } = await query;
+
+    if (error) throw error;
+    res.json(data || []);
+  } catch (error) {
+    console.error('Error fetching certificates:', error);
+    res.status(500).json({ error: error.message || 'Failed to fetch certificates' });
+  }
+});
+
+// Admin: Approve and generate certificate
+app.post('/api/admin/certificates/:id/approve', verifyToken, async (req, res) => {
+  try {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', req.user.id)
+      .single();
+
+    if (profile?.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    // Get certificate details
+    const { data: certificate, error: certError } = await supabase
+      .from('certificates')
+      .select(`
+        *,
+        user:profiles!user_id(id, full_name, email),
+        course:courses!course_id(id, title, description)
+      `)
+      .eq('id', req.params.id)
+      .single();
+
+    if (certError || !certificate) {
+      return res.status(404).json({ error: 'Certificate not found' });
+    }
+
+    if (certificate.status !== 'PENDING_APPROVAL') {
+      return res.status(400).json({ error: 'Certificate is not pending approval' });
+    }
+
+    // Generate certificate number
+    const certNumber = `CERT-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
+
+    // Generate PDF certificate (we'll create a simple PDF)
+    // For now, we'll store a placeholder URL. In production, you'd generate and upload the PDF
+    const certificateUrl = `/api/certificates/${req.params.id}/download`;
+
+    // Update certificate status
+    const { data: updatedCert, error: updateError } = await supabase
+      .from('certificates')
+      .update({
+        status: 'GENERATED',
+        certificate_number: certNumber,
+        certificate_url: certificateUrl,
+        issued_at: new Date().toISOString(),
+        issued_by: req.user.id
+      })
+      .eq('id', req.params.id)
+      .select(`
+        *,
+        user:profiles!user_id(id, full_name, email),
+        course:courses!course_id(id, title, description),
+        issued_by_profile:profiles!issued_by(id, full_name)
+      `)
+      .single();
+
+    if (updateError) throw updateError;
+
+    // Create notification for user
+    await supabase
+      .from('notifications')
+      .insert({
+        user_id: certificate.user_id,
+        title: 'Certificate Generated',
+        message: `Your certificate for "${certificate.course.title}" has been approved and is ready for download.`,
+        type: 'success'
+      });
+
+    res.json({ 
+      message: 'Certificate approved and generated successfully',
+      certificate: updatedCert 
+    });
+  } catch (error) {
+    console.error('Error approving certificate:', error);
+    res.status(500).json({ error: error.message || 'Failed to approve certificate' });
+  }
+});
+
+// User: Get my certificates
+app.get('/api/certificates', verifyToken, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('certificates')
+      .select(`
+        *,
+        course:courses!course_id(id, title, description)
+      `)
+      .eq('user_id', req.user.id)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    res.json(data || []);
+  } catch (error) {
+    console.error('Error fetching user certificates:', error);
+    res.status(500).json({ error: error.message || 'Failed to fetch certificates' });
+  }
+});
+
+// Admin: Create certificates for existing completed courses (backfill utility)
+app.post('/api/admin/certificates/backfill', verifyToken, async (req, res) => {
+  try {
+    console.log('🔄 Starting certificate backfill...');
+    
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', req.user.id)
+      .single();
+
+    if (profile?.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    // First, check if certificates table exists by trying a simple query
+    const { error: tableCheckError } = await supabase
+      .from('certificates')
+      .select('id')
+      .limit(1);
+
+    if (tableCheckError) {
+      console.error('❌ Certificates table error:', tableCheckError);
+      return res.status(500).json({ 
+        error: 'Certificates table does not exist or is not accessible. Please run certificates-schema.sql in Supabase SQL Editor.',
+        details: tableCheckError.message,
+        hint: tableCheckError.hint
+      });
+    }
+
+    // Get all completed enrollments without certificates
+    console.log('📋 Fetching completed enrollments...');
+    const { data: completedEnrollments, error: enrollError } = await supabase
+      .from('enrollments')
+      .select('*, course:courses(id, title), user:profiles!user_id(id, full_name, email)')
+      .eq('status', 'completed');
+
+    if (enrollError) {
+      console.error('❌ Error fetching enrollments:', enrollError);
+      throw enrollError;
+    }
+
+    console.log(`📊 Found ${completedEnrollments?.length || 0} completed enrollments`);
+
+    const certificatesToCreate = [];
+    const errors = [];
+    const skipped = [];
+
+    for (const enrollment of completedEnrollments || []) {
+      // Check if certificate already exists
+      const { data: existingCert, error: checkError } = await supabase
+        .from('certificates')
+        .select('id')
+        .eq('user_id', enrollment.user_id)
+        .eq('course_id', enrollment.course_id)
+        .maybeSingle();
+
+      if (checkError) {
+        console.error('Error checking existing certificate:', checkError);
+        errors.push({
+          user: enrollment.user?.full_name || enrollment.user?.email || 'Unknown',
+          course: enrollment.course?.title || 'Unknown',
+          error: `Check error: ${checkError.message}`
+        });
+        continue;
+      }
+
+      if (existingCert) {
+        skipped.push({
+          user: enrollment.user?.full_name || enrollment.user?.email,
+          course: enrollment.course?.title
+        });
+        continue;
+      }
+
+      // Create certificate
+      console.log(`Creating certificate for user ${enrollment.user_id}, course ${enrollment.course_id}`);
+      const { data: certData, error: certError } = await supabase
+        .from('certificates')
+        .insert({
+          user_id: enrollment.user_id,
+          course_id: enrollment.course_id,
+          enrollment_id: enrollment.id,
+          status: 'PENDING_APPROVAL'
+        })
+        .select()
+        .single();
+
+      if (certError) {
+        console.error('❌ Error creating certificate:', certError);
+        errors.push({
+          user: enrollment.user?.full_name || enrollment.user?.email || 'Unknown',
+          course: enrollment.course?.title || 'Unknown',
+          error: certError.message,
+          details: certError.details,
+          code: certError.code
+        });
+      } else {
+        console.log(`✅ Created certificate ${certData.id}`);
+        certificatesToCreate.push({
+          id: certData.id,
+          user: enrollment.user?.full_name || enrollment.user?.email,
+          course: enrollment.course?.title
+        });
+      }
+    }
+
+    const result = {
+      message: `Processed ${completedEnrollments?.length || 0} completed enrollments`,
+      created: certificatesToCreate.length,
+      skipped: skipped.length,
+      errors: errors.length,
+      certificates: certificatesToCreate,
+      errorDetails: errors
+    };
+
+    console.log('✅ Backfill completed:', result);
+    res.json(result);
+  } catch (error) {
+    console.error('❌ Error backfilling certificates:', error);
+    res.status(500).json({ 
+      error: error.message || 'Failed to backfill certificates',
+      details: error.details,
+      hint: error.hint
+    });
+  }
+});
+
+// User: Download certificate (PDF)
+app.get('/api/certificates/:id/download', verifyToken, async (req, res) => {
+  try {
+    console.log('📥 Certificate download request for ID:', req.params.id);
+    console.log('📥 User ID:', req.user.id);
+    
+    const { data: certificate, error: certError } = await supabase
+      .from('certificates')
+      .select(`
+        *,
+        user:profiles!user_id(id, full_name, email),
+        course:courses!course_id(id, title, description)
+      `)
+      .eq('id', req.params.id)
+      .single();
+
+    if (certError) {
+      console.error('❌ Error fetching certificate:', certError);
+      return res.status(404).json({ error: 'Certificate not found: ' + certError.message });
+    }
+
+    if (!certificate) {
+      console.error('❌ Certificate not found for ID:', req.params.id);
+      return res.status(404).json({ error: 'Certificate not found' });
+    }
+
+    console.log('✅ Certificate found:', {
+      id: certificate.id,
+      user_id: certificate.user_id,
+      course_id: certificate.course_id,
+      status: certificate.status,
+      has_user: !!certificate.user,
+      has_course: !!certificate.course
+    });
+
+    // Check if user owns this certificate
+    if (certificate.user_id !== req.user.id) {
+      console.error('❌ Access denied - user mismatch:', {
+        certificate_user: certificate.user_id,
+        request_user: req.user.id
+      });
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Check if certificate is generated
+    if (certificate.status !== 'GENERATED') {
+      console.error('❌ Certificate not generated, status:', certificate.status);
+      return res.status(400).json({ error: 'Certificate is not yet generated. Current status: ' + certificate.status });
+    }
+
+    // Generate PDF certificate using pdfkit
+    try {
+      console.log('📄 Starting PDF generation...');
+      const PDFDocument = require('pdfkit');
+      console.log('✅ PDFDocument loaded successfully');
+      
+      // Explicitly set A4 size: 595.28 x 841.89 points (210 x 297 mm)
+      // Explicitly set A4 size: 595.28 x 841.89 points (210mm x 297mm)
+      const doc = new PDFDocument({ 
+        size: [595.28, 841.89], // A4 in points (width x height)
+        margin: 0,
+        autoFirstPage: true,
+        layout: 'portrait' // Ensure portrait orientation
+      });
+      console.log('✅ PDFDocument instance created with A4 size (595.28 x 841.89 points)');
+
+      // Set response headers BEFORE piping
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="certificate-${certificate.certificate_number || certificate.id}.pdf"`);
+
+      // Handle errors during PDF generation
+      doc.on('error', (err) => {
+        console.error('PDF generation error:', err);
+        if (!res.headersSent) {
+          res.status(500).json({ error: 'Failed to generate PDF: ' + err.message });
+        }
+      });
+
+      // Pipe PDF to response
+      doc.pipe(res);
+
+      // Professional Certificate Design - White background with black text
+      // A4 dimensions: 595.28 x 841.89 points (210mm x 297mm)
+      const pageWidth = 595.28;  // A4 width in points
+      const pageHeight = 841.89; // A4 height in points
+      const margin = 50;
+      
+      // White background
+      doc.fillColor('#FFFFFF')
+         .rect(0, 0, pageWidth, pageHeight)
+         .fill();
+      
+      // Calculate positions - ensure proper centering (no borders)
+      const centerX = pageWidth / 2;
+      const contentWidth = pageWidth - (margin * 2); // Full width minus margins
+      const textStartX = margin; // Start position for text box
+      const topMargin = 150;
+      let currentY = topMargin;
+      
+      // Title - "Certificate of Completion" - Centered, bold, black
+      doc.fillColor('#000000')
+         .fontSize(32)
+         .font('Helvetica-Bold')
+         .text('Certificate of Completion', textStartX, currentY, { 
+           align: 'center', 
+           width: contentWidth 
+         });
+      
+      currentY += 60;
+      
+      // Introductory text - Centered, black
+      doc.fillColor('#000000')
+         .fontSize(14)
+         .font('Helvetica')
+         .text('This is to certify that', textStartX, currentY, { 
+           align: 'center', 
+           width: contentWidth 
+         });
+      
+      currentY += 50;
+      
+      // Recipient name - Large, bold, black
+      const recipientName = certificate.user?.full_name || certificate.user?.email || 'Student';
+      doc.fillColor('#000000')
+         .fontSize(28)
+         .font('Helvetica-Bold')
+         .text(recipientName, textStartX, currentY, { 
+           align: 'center', 
+           width: contentWidth 
+         });
+      
+      currentY += 55;
+      
+      // Completion statement - Centered, black
+      doc.fillColor('#000000')
+         .fontSize(14)
+         .font('Helvetica')
+         .text('has successfully completed the course', textStartX, currentY, { 
+           align: 'center', 
+           width: contentWidth 
+         });
+      
+      currentY += 50;
+      
+      // Course name - Bold, black
+      const courseTitle = certificate.course?.title || 'Course';
+      doc.fillColor('#000000')
+         .fontSize(24)
+         .font('Helvetica-Bold')
+         .text(courseTitle, textStartX, currentY, { 
+           align: 'center', 
+           width: contentWidth 
+         });
+      
+      currentY += 60;
+      
+      // Completion Date - Centered, black
+      const issuedDate = certificate.issued_at || certificate.enrollment?.completed_at || new Date().toISOString();
+      const formattedDate = new Date(issuedDate).toLocaleDateString('en-US', { 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric' 
+      });
+      doc.fillColor('#000000')
+         .fontSize(12)
+         .font('Helvetica')
+         .text(`Completion Date: ${formattedDate}`, textStartX, currentY, { 
+           align: 'center', 
+           width: contentWidth 
+         });
+      
+      // Signature section - Professional certificate layout
+      // Lines above, labels below (centered)
+      const signatureY = pageHeight - 140;
+      const signatureLineWidth = 130; // Width of each signature line
+      const signatureMargin = 40; // Left/right margin for signatures
+      const signatureAreaWidth = pageWidth - (signatureMargin * 2); // Available width for signatures
+      const signatureSpacing = signatureAreaWidth / 3; // Divide into 3 equal parts
+      const labelOffset = 12; // Space between line and label (in points)
+      
+      // Calculate exact center positions for each signature section
+      const signature1X = signatureMargin + (signatureSpacing * 0.5); // Center of first third
+      const signature2X = signatureMargin + (signatureSpacing * 1.5); // Center of second third
+      const signature3X = signatureMargin + (signatureSpacing * 2.5); // Center of third third
+      
+      // Signature labels
+      const signatures = [
+        { label: 'Head of Training', x: signature1X },
+        { label: 'Course Instructor', x: signature2X },
+        { label: 'Platform Director', x: signature3X }
+      ];
+      
+      // Draw signature lines and labels - perfectly aligned
+      signatures.forEach((sig) => {
+        const centerX = sig.x;
+        const halfLineWidth = signatureLineWidth / 2;
+        const lineStartX = centerX - halfLineWidth;
+        const lineEndX = centerX + halfLineWidth;
+        
+        // Step 1: Draw the signature line (black, horizontal) - where signatures go
+        doc.strokeColor('#000000')
+           .lineWidth(1)
+           .moveTo(lineStartX, signatureY)
+           .lineTo(lineEndX, signatureY)
+           .stroke();
+        
+        // Step 2: Draw the label directly below the line, perfectly centered
+        // Text box starts at lineStartX, has width signatureLineWidth, text is centered within it
+        doc.fillColor('#000000')
+           .fontSize(10)
+           .font('Helvetica-Bold')
+           .text(sig.label, lineStartX, signatureY + labelOffset, {
+             width: signatureLineWidth,
+             align: 'center'
+           });
+      });
+
+      // Finalize PDF
+      doc.end();
+      
+      // Handle response end
+      res.on('finish', () => {
+        console.log('✅ PDF sent successfully');
+      });
+      
+      res.on('error', (err) => {
+        console.error('❌ Response stream error:', err);
+      });
+      
+    } catch (pdfError) {
+      console.error('❌ Error requiring or using pdfkit:', pdfError);
+      console.error('PDF Error stack:', pdfError.stack);
+      if (!res.headersSent) {
+        res.status(500).json({ 
+          error: 'PDF generation failed',
+          message: pdfError.message,
+          details: process.env.NODE_ENV === 'development' ? pdfError.stack : 'Check server logs for details'
+        });
+      } else {
+        console.error('❌ Headers already sent, cannot send error response');
+      }
+    }
+  } catch (error) {
+    console.error('❌ Error generating certificate PDF:', error);
+    console.error('Error stack:', error.stack);
+    console.error('Error details:', {
+      message: error.message,
+      name: error.name,
+      code: error.code
+    });
+    
+    // Only send error if headers haven't been sent yet
+    if (!res.headersSent) {
+      res.status(500).json({ 
+        error: 'Failed to generate certificate PDF',
+        message: error.message,
+        details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      });
+    }
   }
 });
 
@@ -769,21 +1498,10 @@ app.post('/api/attendance', verifyToken, async (req, res) => {
       .maybeSingle();
 
     if (existing) {
-      // Update existing attendance
-      const { data, error } = await supabase
-        .from('attendance')
-        .update({
-          session,
-          status,
-          notes: notes || null,
-          marked_by: req.user.id
-        })
-        .eq('id', existing.id)
-        .select('*, course:courses(id, title)')
-        .single();
-
-      if (error) throw error;
-      return res.json({ ...data, updated: true });
+      // Regular users cannot update existing attendance - only admins can
+      return res.status(403).json({ 
+        error: 'Attendance already marked for this session. Only admins can modify existing attendance records.' 
+      });
     }
 
     // Create new attendance record
@@ -845,6 +1563,61 @@ app.post('/api/admin/attendance', verifyToken, async (req, res) => {
 
     if (error) throw error;
     res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Admin: Update attendance
+app.put('/api/admin/attendance/:id', verifyToken, async (req, res) => {
+  try {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', req.user.id)
+      .single();
+
+    if (profile?.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    const { data, error } = await supabase
+      .from('attendance')
+      .update({
+        ...req.body,
+        marked_by: req.user.id
+      })
+      .eq('id', req.params.id)
+      .select('*, user:profiles!user_id(id, full_name, email), course:courses(id, title)')
+      .single();
+
+    if (error) throw error;
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Admin: Delete attendance
+app.delete('/api/admin/attendance/:id', verifyToken, async (req, res) => {
+  try {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', req.user.id)
+      .single();
+
+    if (profile?.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    const { error } = await supabase
+      .from('attendance')
+      .delete()
+      .eq('id', req.params.id);
+
+    if (error) throw error;
+    res.json({ message: 'Attendance record deleted' });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -1182,7 +1955,128 @@ app.get('/api/reports/attendance', verifyToken, async (req, res) => {
 // Helper function to check and update enrollment completion
 async function checkAndUpdateEnrollmentCompletion(userId, courseId) {
   try {
-    // For day-based course completion, consider only quiz lessons (one per day).
+    // Check enrollment status first - if already completed, just ensure certificate exists
+    const { data: enrollment } = await supabase
+      .from('enrollments')
+      .select('id, status, progress')
+      .eq('user_id', userId)
+      .eq('course_id', courseId)
+      .maybeSingle();
+
+    if (!enrollment) {
+      console.log('No enrollment found for user', userId, 'course', courseId);
+      return false;
+    }
+
+    // If enrollment is already marked as completed, ensure certificate exists
+    if (enrollment.status === 'completed' && enrollment.progress === 100) {
+      const { data: existingCert } = await supabase
+        .from('certificates')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('course_id', courseId)
+        .maybeSingle();
+
+      if (!existingCert) {
+        console.log('Enrollment completed but no certificate found. Creating certificate...');
+        const { data: certData, error: certError } = await supabase
+          .from('certificates')
+          .insert({
+            user_id: userId,
+            course_id: courseId,
+            enrollment_id: enrollment.id,
+            status: 'PENDING_APPROVAL'
+          })
+          .select()
+          .single();
+
+        if (certError) {
+          console.error('Error creating certificate for completed enrollment:', certError);
+        } else {
+          console.log(`✅ Certificate created for already completed enrollment: ${certData.id}`);
+        }
+      }
+      return true;
+    }
+
+    // For day-based course completion, check both old lessons system and new curriculum system
+    // First, try new curriculum system (course_curriculum)
+    const { data: curriculum, error: curriculumError } = await supabase
+      .from('course_curriculum')
+      .select('day_number')
+      .eq('course_id', courseId)
+      .order('day_number', { ascending: true });
+
+    if (!curriculumError && curriculum && curriculum.length > 0) {
+      // Using new curriculum system - check attendance for all days
+      const { data: attendanceRecords, error: attendanceError } = await supabase
+        .from('attendance')
+        .select('session')
+        .eq('user_id', userId)
+        .eq('course_id', courseId)
+        .eq('status', 'present');
+
+      if (attendanceError) {
+        console.error('Error checking attendance for curriculum:', attendanceError);
+        return false;
+      }
+
+      const completedDays = new Set();
+      attendanceRecords?.forEach(record => {
+        const match = record.session?.match(/Day\s*(\d+)/i);
+        if (match) completedDays.add(parseInt(match[1]));
+      });
+
+      const allDaysCompleted = curriculum.every(day => completedDays.has(day.day_number));
+      
+      if (allDaysCompleted) {
+        // All days completed via attendance
+        const { error: updateError } = await supabase
+          .from('enrollments')
+          .update({
+            progress: 100,
+            status: 'completed',
+            completed_at: new Date().toISOString()
+          })
+          .eq('user_id', userId)
+          .eq('course_id', courseId);
+
+        if (!updateError) {
+          console.log(`✅ Auto-updated enrollment to completed (curriculum system) for user ${userId}, course ${courseId}`);
+          
+          // Create certificate
+          const { data: existingCert } = await supabase
+            .from('certificates')
+            .select('id')
+            .eq('user_id', userId)
+            .eq('course_id', courseId)
+            .maybeSingle();
+
+          if (!existingCert) {
+            const { data: certData, error: certError } = await supabase
+              .from('certificates')
+              .insert({
+                user_id: userId,
+                course_id: courseId,
+                enrollment_id: enrollment.id,
+                status: 'PENDING_APPROVAL'
+              })
+              .select()
+              .single();
+
+            if (certError) {
+              console.error('❌ Error creating certificate record:', certError);
+            } else {
+              console.log(`📜 Certificate record created with PENDING_APPROVAL status for user ${userId}, course ${courseId}`);
+            }
+          }
+          return true;
+        }
+      }
+      return false;
+    }
+
+    // Fallback to old lessons system
     const { data: quizLessons, error: quizLessonsError } = await supabase
       .from('lessons')
       .select('id, lesson_type')
@@ -1213,6 +2107,14 @@ async function checkAndUpdateEnrollmentCompletion(userId, courseId) {
     const allDaysCompleted = passedQuizzes.length === quizLessons.length;
 
     if (allDaysCompleted) {
+      // Get enrollment ID
+      const { data: enrollment } = await supabase
+        .from('enrollments')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('course_id', courseId)
+        .maybeSingle();
+
       // Update enrollment to completed
       const { error: updateError } = await supabase
         .from('enrollments')
@@ -1226,6 +2128,43 @@ async function checkAndUpdateEnrollmentCompletion(userId, courseId) {
 
       if (!updateError) {
         console.log(`✅ Auto-updated enrollment to completed for user ${userId}, course ${courseId}`);
+        
+        // Create certificate record with PENDING_APPROVAL status
+        const { data: existingCert } = await supabase
+          .from('certificates')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('course_id', courseId)
+          .maybeSingle();
+
+        if (!existingCert) {
+          const { data: certData, error: certError } = await supabase
+            .from('certificates')
+            .insert({
+              user_id: userId,
+              course_id: courseId,
+              enrollment_id: enrollment?.id || null,
+              status: 'PENDING_APPROVAL'
+            })
+            .select()
+            .single();
+
+          if (certError) {
+            console.error('❌ Error creating certificate record:', certError);
+            console.error('❌ Certificate error details:', {
+              message: certError.message,
+              details: certError.details,
+              hint: certError.hint,
+              code: certError.code
+            });
+          } else {
+            console.log(`✅ Certificate record created with PENDING_APPROVAL status for user ${userId}, course ${courseId}`);
+            console.log(`📜 Certificate ID: ${certData?.id}`);
+          }
+        } else {
+          console.log(`ℹ️ Certificate already exists for user ${userId}, course ${courseId}`);
+        }
+        
         return true;
       }
     }

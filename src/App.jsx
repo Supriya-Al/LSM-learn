@@ -10,7 +10,7 @@ import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { Users } from './pages/admin/Users';
 import { Courses as AdminCourses } from './pages/admin/Courses';
 import { Attendance as AdminAttendance } from './pages/admin/Attendance';
-import { Reports } from './pages/admin/Reports';
+import { CertificateManagement } from './pages/admin/CertificateManagement';
 
 // User pages
 import { UserDashboard } from './pages/user/UserDashboard';
@@ -18,6 +18,7 @@ import { Courses } from './pages/user/Courses';
 import { Enrollments } from './pages/user/Enrollments';
 import { CourseDetailDayBased } from './pages/user/CourseDetailDayBased';
 import { UserAttendance } from './pages/user/UserAttendance';
+import { About } from './pages/About';
 
 const AppRoutes = () => {
   const { user, profile, loading } = useAuth();
@@ -27,15 +28,9 @@ const AppRoutes = () => {
       <Route 
         path="/login" 
         element={
-          loading ? (
-            <div className="flex items-center justify-center min-h-screen">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-600"></div>
-            </div>
-          ) : !user ? (
-            <Login />
-          ) : profile && profile.role ? (
+          user && profile && profile.role ? (
             <Navigate to={profile.role === 'admin' ? '/admin' : '/dashboard'} replace />
-          ) : user && !profile ? (
+          ) : user && !profile && loading ? (
             // User is logged in but profile is still loading
             <div className="flex items-center justify-center min-h-screen">
               <div className="text-center">
@@ -90,11 +85,11 @@ const AppRoutes = () => {
         }
       />
       <Route
-        path="/admin/reports"
+        path="/admin/certificates"
         element={
           <ProtectedRoute adminOnly>
             <Layout>
-              <Reports />
+              <CertificateManagement />
             </Layout>
           </ProtectedRoute>
         }
@@ -146,6 +141,17 @@ const AppRoutes = () => {
           <ProtectedRoute>
             <Layout>
               <UserAttendance />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/about"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <About />
             </Layout>
           </ProtectedRoute>
         }

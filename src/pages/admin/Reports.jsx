@@ -94,7 +94,7 @@ export const Reports = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-orange-50/20">
       {/* Hero Header */}
-      <div className="bg-gradient-to-r from-slate-900 via-blue-900 to-slate-900 text-white py-12">
+      <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white py-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
             <div>
@@ -102,8 +102,7 @@ export const Reports = () => {
                 <FileText className="w-3 h-3 mr-2" />
                 Reports & Analytics
               </div>
-              <h1 className="text-4xl md:text-5xl font-bold mb-3 tracking-tight">Reports</h1>
-              <p className="text-xl text-slate-200">Generate and export attendance reports</p>
+              <h1 className="text-4xl md:text-5xl font-bold text-white mb-3 tracking-tight">Reports</h1>
             </div>
             {attendance.length > 0 && (
               <button

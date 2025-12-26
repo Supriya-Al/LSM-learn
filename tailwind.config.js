@@ -7,6 +7,17 @@ export default {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+      },
+      fontSize: {
+        'hero': ['3.75rem', { lineHeight: '1.1', letterSpacing: '-0.03em', fontWeight: '900' }],
+        'hero-md': ['3rem', { lineHeight: '1.1', letterSpacing: '-0.03em', fontWeight: '900' }],
+        'section': ['2.5rem', { lineHeight: '1.2', letterSpacing: '-0.02em', fontWeight: '700' }],
+        'section-md': ['2rem', { lineHeight: '1.2', letterSpacing: '-0.02em', fontWeight: '700' }],
+        'card-title': ['1.875rem', { lineHeight: '1.3', letterSpacing: '-0.015em', fontWeight: '600' }],
+        'card-title-md': ['1.5rem', { lineHeight: '1.3', letterSpacing: '-0.015em', fontWeight: '600' }],
+      },
       colors: {
         // Calm, learning‑focused palette
         surface: "#f8f9fb",          // main app background
@@ -26,6 +37,11 @@ export default {
       },
       borderRadius: {
         xl: "0.9rem",
+      },
+      letterSpacing: {
+        'tight': '-0.03em',
+        'tighter': '-0.02em',
+        'tightest': '-0.015em',
       },
     },
   },

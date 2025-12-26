@@ -43,6 +43,27 @@ export const Users = () => {
     }
   };
 
+  const handleDelete = async () => {
+    if (!editingUser) return;
+    if (
+      !window.confirm(
+        'Are you sure you want to remove this user? This action cannot be undone.'
+      )
+    ) {
+      return;
+    }
+
+    try {
+      await api.delete(`/admin/users/${editingUser.id}`);
+      await fetchUsers();
+      setShowModal(false);
+      setEditingUser(null);
+    } catch (error) {
+      console.error('Error deleting user:', error);
+      alert('Failed to remove user');
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-orange-50/20 flex items-center justify-center">
@@ -54,7 +75,7 @@ export const Users = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-orange-50/20">
       {/* Hero Header */}
-      <div className="bg-gradient-to-r from-slate-900 via-blue-900 to-slate-900 text-white py-12">
+      <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white py-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
             <div>
@@ -62,7 +83,7 @@ export const Users = () => {
                 <UsersIcon className="w-3 h-3 mr-2" />
                 User Management
               </div>
-              <h1 className="text-4xl md:text-5xl font-bold mb-3 tracking-tight">User Management</h1>
+              <h1 className="text-4xl md:text-5xl font-bold text-white mb-3 tracking-tight">User Management</h1>
               <p className="text-xl text-slate-200">Manage user accounts and permissions</p>
             </div>
           </div>
@@ -129,7 +150,7 @@ export const Users = () => {
                               : 'bg-gradient-to-r from-orange-100 to-orange-200 text-orange-800'
                           }`}
                         >
-                          {user.role}
+                          {user.role === 'admin' ? 'admin' : 'student'}
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
@@ -202,6 +223,13 @@ export const Users = () => {
                 className="flex-1 px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-all font-semibold"
               >
                 Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDelete}
+                className="px-6 py-3 border-2 border-red-500 text-red-600 rounded-xl hover:bg-red-50 transition-all font-semibold"
+              >
+                Remove User
               </button>
               <button
                 type="button"

@@ -15,12 +15,20 @@ export const useAuth = () => {
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false); // Start as false to show login immediately
 
   const fetchProfile = async (userId) => {
     try {
       console.log('📋 Fetching profile for user:', userId);
-      const { data } = await api.get('/profile');
+      
+      // Add timeout to prevent infinite loading
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Request timeout')), 5000)
+      );
+      
+      const profilePromise = api.get('/profile');
+      const { data } = await Promise.race([profilePromise, timeoutPromise]);
+      
       console.log('✅ Profile fetched:', data);
       setProfile(data);
       setLoading(false);
@@ -30,19 +38,9 @@ export const AuthProvider = ({ children }) => {
       console.error('❌ Error details:', {
         message: error.message,
         response: error.response?.data,
-        status: error.response?.status
+        status: error.response?.status,
+        code: error.code
       });
-      
-      // If it's a 401, the token might be invalid
-      if (error.response?.status === 401) {
-        console.warn('⚠️ Unauthorized - token may be invalid');
-        // Clear user session on auth error
-        setUser(null);
-        setProfile(null);
-        localStorage.removeItem('supabase.auth.token');
-        setLoading(false);
-        return null;
-      }
       
       // Get current user info from Supabase session for default profile
       let currentUser = user;
@@ -51,9 +49,25 @@ export const AuthProvider = ({ children }) => {
         currentUser = session?.user;
       }
       
-      // If it's a network error, backend might not be running
-      if (error.code === 'ECONNREFUSED' || error.message?.includes('Network Error')) {
-        console.error('❌ Backend server not reachable. Make sure it\'s running on port 3001');
+      // If it's a 401, the token might be invalid - clear session
+      if (error.response?.status === 401) {
+        console.warn('⚠️ Unauthorized - token may be invalid');
+        setUser(null);
+        setProfile(null);
+        localStorage.removeItem('supabase.auth.token');
+        setLoading(false);
+        return null;
+      }
+      
+      // If it's a network error or timeout, backend might not be running
+      if (
+        error.code === 'ECONNREFUSED' || 
+        error.code === 'ERR_NETWORK' ||
+        error.message?.includes('Network Error') ||
+        error.message?.includes('timeout') ||
+        error.message?.includes('Request timeout')
+      ) {
+        console.error('❌ Backend server not reachable or request timed out. Using default profile.');
         // Create a default profile to prevent infinite loading
         const defaultProfile = {
           id: userId,
@@ -80,70 +94,129 @@ export const AuthProvider = ({ children }) => {
   };
 
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        setUser(session.user);
-        localStorage.setItem('supabase.auth.token', session.access_token);
-        fetchProfile(session.user.id);
-      } else {
-        setLoading(false);
+    let mounted = true;
+    
+    // Get initial session - run asynchronously without blocking UI
+    const initAuth = async () => {
+      // Check if Supabase is configured
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      if (!supabaseUrl) {
+        console.warn('⚠️ Supabase not configured - skipping session check');
+        return;
       }
-    });
 
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+      try {
+        // Don't set loading to true - let the login page show immediately
+        const { data: { session }, error } = await supabase.auth.getSession();
+        
+        if (!mounted) {
+          setLoading(false);
+          return;
+        }
+        
+        if (error) {
+          console.error('Error getting session:', error);
+          setLoading(false);
+          return;
+        }
+        
         if (session) {
           setUser(session.user);
           localStorage.setItem('supabase.auth.token', session.access_token);
+          setLoading(true); // Show loading while fetching profile for existing session
           await fetchProfile(session.user.id);
         } else {
-          setUser(null);
-          setProfile(null);
-          localStorage.removeItem('supabase.auth.token');
-          setLoading(false);
+          setLoading(false); // No session = show login page
         }
+      } catch (error) {
+        if (!mounted) return;
+        console.error('Error initializing auth:', error);
+        setLoading(false);
       }
-    );
+    };
+    
+    // Run async without blocking
+    initAuth();
 
-    return () => subscription.unsubscribe();
+    // Listen for auth changes (only if Supabase is configured)
+    let subscription;
+    try {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      if (supabaseUrl) {
+        const result = supabase.auth.onAuthStateChange(
+          async (event, session) => {
+            if (!mounted) return;
+            if (session) {
+              setUser(session.user);
+              localStorage.setItem('supabase.auth.token', session.access_token);
+              await fetchProfile(session.user.id);
+            } else {
+              setUser(null);
+              setProfile(null);
+              localStorage.removeItem('supabase.auth.token');
+              setLoading(false);
+            }
+          }
+        );
+        subscription = result?.data?.subscription;
+      }
+    } catch (error) {
+      console.error('Error setting up auth listener:', error);
+    }
+
+    return () => {
+      mounted = false;
+      if (subscription) {
+        subscription.unsubscribe();
+      }
+    };
   }, []);
 
   const signIn = async (email, password) => {
     console.log('🔐 AuthContext: Starting sign in...');
     
     // Check if Supabase is configured
-    if (!supabase) {
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    if (!supabaseUrl || !supabase) {
       console.error('❌ Supabase client not initialized');
       throw new Error('Authentication service not configured. Please check your environment variables.');
     }
     
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-    
-    if (error) {
-      console.error('❌ Sign in error:', error);
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      
+      if (error) {
+        console.error('❌ Sign in error:', error);
+        throw error;
+      }
+      
+      console.log('✅ Sign in successful, user:', data.user?.id);
+      
+      // Set user immediately
+      if (data.user) {
+        setUser(data.user);
+        localStorage.setItem('supabase.auth.token', data.session?.access_token || '');
+        
+        // Fetch profile after sign in (with timeout)
+        if (data.user.id) {
+          console.log('📋 Fetching profile for user:', data.user.id);
+          try {
+            await fetchProfile(data.user.id);
+          } catch (profileError) {
+            console.error('Profile fetch error (non-fatal):', profileError);
+            // Don't throw - user is still signed in, profile will be fetched later
+          }
+        }
+      }
+      
+      return data;
+    } catch (error) {
+      console.error('❌ Sign in failed:', error);
       throw error;
     }
-    
-    console.log('✅ Sign in successful, user:', data.user?.id);
-    
-    // Set user immediately
-    if (data.user) {
-      setUser(data.user);
-      localStorage.setItem('supabase.auth.token', data.session?.access_token || '');
-      
-      // Fetch profile after sign in
-      if (data.user.id) {
-        console.log('📋 Fetching profile for user:', data.user.id);
-        await fetchProfile(data.user.id);
-      }
-    }
-    
-    return data;
   };
 
   const signUp = async (email, password, fullName, role = 'user') => {

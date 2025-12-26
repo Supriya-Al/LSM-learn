@@ -158,29 +158,29 @@ export const Courses = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-orange-50/20">
-      {/* Hero Section - Dark Blue with Orange Accents */}
-      <div className="relative overflow-hidden bg-gradient-to-r from-slate-900 via-blue-900 to-slate-900">
+    <div className="min-h-screen bg-white">
+      {/* Hero Section - Dark Navy with Orange Accents */}
+      <div className="relative overflow-hidden bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900">
         <div className="absolute inset-0 opacity-10">
           <div className="absolute inset-0 bg-gradient-to-br from-white/5 via-transparent to-transparent"></div>
           <div className="absolute top-0 right-0 w-96 h-96 bg-orange-500/10 rounded-full blur-3xl"></div>
-          <div className="absolute bottom-0 left-0 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl"></div>
+          <div className="absolute bottom-0 left-0 w-96 h-96 bg-slate-700/10 rounded-full blur-3xl"></div>
         </div>
         <div className="absolute inset-0 bg-gradient-to-l from-orange-500/20 via-transparent to-transparent"></div>
         
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
           <div className="text-center mb-12">
             <div className="inline-flex items-center px-4 py-2 rounded-full text-xs font-semibold tracking-widest uppercase bg-orange-500/20 text-orange-300 border border-orange-400/30 mb-6 backdrop-blur-sm">
               <Award className="w-3 h-3 mr-2" />
               Expert-Led Courses
             </div>
-            <h1 className="text-5xl md:text-6xl font-bold text-white mb-6 tracking-tight">
+            <h1 className="text-5xl md:text-6xl font-bold text-white mb-6 leading-[1.1] tracking-[-0.025em]">
               Discover Your Next{' '}
-              <span className="bg-gradient-to-r from-orange-400 to-amber-400 bg-clip-text text-transparent">
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-500 to-amber-400">
                 Learning Journey
               </span>
             </h1>
-            <p className="text-xl text-slate-200 max-w-3xl mx-auto leading-relaxed">
+            <p className="text-lg text-slate-300 max-w-3xl mx-auto leading-relaxed font-normal">
               Master new skills with our comprehensive courses taught by industry experts. 
               Start your learning journey today and unlock your potential.
             </p>
@@ -190,21 +190,21 @@ export const Courses = () => {
           <div className="max-w-4xl mx-auto">
             <div className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl p-2 flex flex-col md:flex-row gap-2 border border-white/20">
               <div className="flex-1 relative">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
                 <input
                   type="text"
                   placeholder="Search for courses, skills, or topics..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-12 pr-4 py-4 text-gray-900 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500 text-lg font-medium"
+                  className="w-full pl-12 pr-4 py-4 text-slate-900 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500 text-lg font-semibold"
                 />
               </div>
               <div className="relative">
-                <Filter className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none z-10" />
+                <Filter className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none z-10" />
                 <select
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value)}
-                  className="pl-12 pr-10 py-4 text-gray-900 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500 appearance-none bg-white font-semibold cursor-pointer min-w-[180px]"
+                  className="pl-12 pr-10 py-4 text-slate-900 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500 appearance-none bg-white font-bold cursor-pointer min-w-[180px]"
                 >
                   <option value="popular">Most Popular</option>
                   <option value="newest">Newest First</option>
@@ -220,28 +220,27 @@ export const Courses = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h2 className="text-3xl font-bold text-gray-900 mb-2 flex items-center gap-3">
-              <div className="bg-gradient-to-br from-blue-600 to-blue-800 p-2 rounded-xl shadow-lg">
-                <BookOpen className="w-6 h-6 text-white" />
+            <h2 className="text-2xl font-semibold text-slate-900 mb-1 flex items-center gap-3">
+              <div className="bg-slate-50 p-2 rounded-lg">
+                <BookOpen className="w-5 h-5 text-orange-600" />
               </div>
               All Courses
             </h2>
-            <p className="text-gray-600 text-lg">
+            <p className="text-slate-500 text-sm font-normal">
               {filteredCourses.length} {filteredCourses.length === 1 ? 'course' : 'courses'} available
             </p>
           </div>
         </div>
 
         {filteredCourses.length === 0 ? (
-          <div className="bg-white rounded-2xl shadow-xl p-16 text-center border border-gray-100">
+          <div className="bg-white rounded-xl shadow-sm p-12 text-center border border-slate-200">
             <div className="relative inline-block mb-6">
-              <div className="absolute inset-0 bg-blue-200 rounded-full animate-ping opacity-20"></div>
-              <BookOpen className="w-24 h-24 text-gray-300 mx-auto relative" />
+              <BookOpen className="w-20 h-20 text-slate-300 mx-auto relative" />
             </div>
-            <h3 className="text-2xl font-bold text-gray-900 mb-3">
+            <h3 className="text-xl font-semibold text-slate-900 mb-3">
               {courses.length === 0 ? 'No Courses Available' : 'No Courses Match Your Search'}
             </h3>
-            <p className="text-gray-600 mb-8 text-lg">
+            <p className="text-slate-600 mb-8 text-base font-normal leading-relaxed">
               {courses.length === 0 
                 ? "There are no courses available yet. Please check back later or contact an administrator."
                 : "Try adjusting your search or filter criteria."}
@@ -249,10 +248,10 @@ export const Courses = () => {
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery('')}
-                className="inline-flex items-center gap-2 px-8 py-4 bg-gradient-to-r from-orange-600 to-orange-500 text-white rounded-xl hover:from-orange-700 hover:to-orange-600 transition-all font-semibold shadow-lg"
+                className="inline-flex items-center gap-2 px-6 py-2.5 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors font-medium shadow-sm"
               >
                 Clear Search
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             )}
           </div>
@@ -266,11 +265,11 @@ export const Courses = () => {
               return (
                 <div
                   key={course.id}
-                  className="bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-100 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2 group"
+                  className="bg-white rounded-xl shadow-sm overflow-hidden border border-slate-200 hover:shadow-md hover:border-orange-200 transition-all duration-200 group"
                   style={{ animationDelay: `${index * 0.1}s` }}
                 >
                   {/* Course Image */}
-                  <div className="relative h-48 overflow-hidden bg-gradient-to-br from-blue-600 to-blue-800">
+                  <div className="relative h-48 overflow-hidden bg-slate-100">
                     <img 
                       src={courseImage} 
                       alt={course.title}
@@ -312,25 +311,25 @@ export const Courses = () => {
                   </div>
 
                   {/* Course Content */}
-                  <div className="p-6">
+                  <div className="p-5">
                     {/* Course Title */}
-                    <h3 className="text-xl font-bold text-gray-900 mb-3 line-clamp-2 group-hover:text-blue-600 transition-colors min-h-[3.5rem]">
+                    <h3 className="text-lg font-semibold text-slate-900 mb-2 line-clamp-2 group-hover:text-orange-600 transition-colors">
                       {course.title}
                     </h3>
                     
                     {/* Course Description */}
-                    <p className="text-gray-600 text-sm mb-6 line-clamp-3 leading-relaxed min-h-[4.5rem]">
+                    <p className="text-slate-600 text-sm mb-4 line-clamp-2 leading-relaxed font-normal">
                       {course.description || 'Master this skill with our comprehensive course designed by industry experts'}
                     </p>
 
                     {/* Course Meta */}
-                    <div className="flex items-center gap-4 mb-6 pb-6 border-b border-gray-100">
-                      <div className="flex items-center gap-2 text-sm text-gray-600">
-                        <Clock className="w-4 h-4 text-blue-600" />
+                    <div className="flex items-center gap-4 mb-4 pb-4 border-b border-slate-100">
+                      <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                        <Clock className="w-3.5 h-3.5" />
                         <span className="font-medium">7 days</span>
                       </div>
-                      <div className="flex items-center gap-2 text-sm text-gray-600">
-                        <TrendingUp className="w-4 h-4 text-orange-600" />
+                      <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                        <TrendingUp className="w-3.5 h-3.5 text-orange-600" />
                         <span className="font-medium">Beginner</span>
                       </div>
                     </div>
@@ -344,10 +343,10 @@ export const Courses = () => {
                           handleEnroll(course.id);
                         }
                       }}
-                      className={`w-full px-6 py-3.5 rounded-xl text-sm font-bold transition-all duration-300 shadow-lg ${
+                      className={`w-full px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors ${
                         isEnrolled
-                          ? 'bg-gradient-to-r from-blue-600 to-blue-700 text-white hover:from-blue-700 hover:to-blue-800 hover:shadow-xl transform hover:scale-105'
-                          : 'bg-gradient-to-r from-orange-600 to-orange-500 text-white hover:from-orange-700 hover:to-orange-600 hover:shadow-xl transform hover:scale-105'
+                          ? 'bg-slate-900 text-white hover:bg-slate-800'
+                          : 'bg-orange-600 text-white hover:bg-orange-700'
                       }`}
                     >
                       {isEnrolled ? (

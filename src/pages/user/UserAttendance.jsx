@@ -49,20 +49,40 @@ export const UserAttendance = () => {
   useEffect(() => {
     if (location.state && location.state.fromCourseDetail) {
       const { courseId, session, date, checkInTime, checkOutTime, dayNumber, courseTitle } = location.state;
-      setIsFromQuizCompletion(true);
-      setShowMarkModal(true);
-      setMarkForm((prev) => ({
-        ...prev,
-        course_id: courseId || '',
-        session: session || '',
-        date: date || new Date().toISOString().split('T')[0],
-        checkInTime: checkInTime !== undefined ? checkInTime : prev.checkInTime,
-        checkOutTime: checkOutTime !== undefined ? checkOutTime : prev.checkOutTime,
-        status: 'present',
-      }));
-      navigate('.', { replace: true, state: {} });
+      
+      // Wait for enrollments to load before auto-filling
+      if (enrollments.length === 0) {
+        // Enrollments not loaded yet, wait for them
+        return;
+      }
+      
+      // Verify the course exists in enrollments
+      const enrollment = enrollments.find(e => e.course_id === courseId);
+      if (enrollment) {
+        console.log('Auto-filling attendance form:', { courseId, session, date, checkInTime, checkOutTime });
+        setIsFromQuizCompletion(true);
+        setShowMarkModal(true);
+        
+        // Ensure session format matches dropdown format (e.g., "Day 7")
+        const sessionValue = session || (dayNumber ? `Day ${dayNumber}` : '');
+        
+        setMarkForm((prev) => ({
+          ...prev,
+          course_id: courseId || '',
+          session: sessionValue,
+          date: date || new Date().toISOString().split('T')[0],
+          checkInTime: checkInTime !== undefined ? checkInTime : prev.checkInTime,
+          checkOutTime: checkOutTime !== undefined ? checkOutTime : prev.checkOutTime,
+          status: 'present',
+        }));
+        
+        // Clear location state after auto-filling
+        navigate('.', { replace: true, state: {} });
+      } else {
+        console.warn('Course not found in enrollments:', courseId, 'Available enrollments:', enrollments.map(e => e.course_id));
+      }
     }
-  }, [location.state, navigate]);
+  }, [location.state, enrollments, navigate]);
 
   const fetchAttendance = async () => {
     try {
@@ -348,26 +368,33 @@ export const UserAttendance = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-orange-50/20">
+    <div className="min-h-screen bg-white">
       {/* Hero Header */}
-      <div className="bg-gradient-to-r from-slate-900 via-blue-900 to-slate-900 text-white py-12">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="relative overflow-hidden bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white py-16">
+        <div className="absolute inset-0 opacity-10">
+          <div className="absolute top-0 right-0 w-96 h-96 bg-orange-500/10 rounded-full blur-3xl"></div>
+          <div className="absolute bottom-0 left-0 w-96 h-96 bg-slate-700/10 rounded-full blur-3xl"></div>
+        </div>
+        <div className="absolute inset-0 bg-gradient-to-l from-orange-500/20 via-transparent to-transparent"></div>
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
             <div>
-              <h1 className="text-4xl md:text-5xl font-bold mb-3 tracking-tight">Your Progress</h1>
-              <p className="text-xl text-slate-200">Track your attendance and course completion progress</p>
+              <h1 className="text-4xl md:text-5xl font-bold text-white mb-3 leading-[1.1] tracking-[-0.025em]">
+                Your Progress
+              </h1>
+              <p className="text-lg text-slate-300 font-normal leading-relaxed">Track your attendance and course completion progress</p>
             </div>
             <div className="flex gap-3">
               <button
                 onClick={() => setShowMarkModal(true)}
-                className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-orange-600 to-orange-500 text-white rounded-xl hover:from-orange-700 hover:to-orange-600 transition-all font-semibold shadow-lg hover:shadow-xl transform hover:scale-105"
+                className="flex items-center gap-2 px-5 py-2.5 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors font-semibold shadow-sm"
               >
                 <Plus className="w-5 h-5" />
                 Mark Attendance
               </button>
               <button
                 onClick={exportAttendanceToCSV}
-                className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all font-semibold shadow-lg"
+                className="flex items-center gap-2 px-5 py-2.5 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors font-semibold shadow-sm"
               >
                 <Download className="w-5 h-5" />
                 Export CSV
@@ -380,46 +407,52 @@ export const UserAttendance = () => {
       {/* Stats Cards */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-8 relative z-10 mb-8">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-          <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-2xl shadow-xl p-6 text-white">
+          <div className="bg-orange-600 rounded-xl shadow-sm p-5 text-white">
             <div className="flex items-center justify-between mb-3">
-              <span className="text-orange-100 text-sm font-semibold">Avg Progress</span>
-              <TrendingUp className="w-6 h-6 opacity-80" />
+              <span className="text-orange-100 text-xs font-medium uppercase tracking-wide">Avg Progress</span>
+              <TrendingUp className="w-5 h-5 opacity-90" />
             </div>
-            <div className="text-3xl font-bold">{courseStats.avgProgress}%</div>
-            <div className="text-orange-100 text-xs mt-1">
+            <div className="text-2xl font-bold leading-tight">{courseStats.avgProgress}%</div>
+            <div className="text-orange-100 text-xs mt-1 font-normal">
               {courseStats.completedCourses} of {courseStats.totalCourses} completed
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl shadow-xl p-6 border border-gray-100">
+          <div className="bg-white rounded-xl shadow-sm p-5 border border-slate-200 hover:shadow-md transition-shadow">
             <div className="flex items-center justify-between mb-3">
-              <span className="text-gray-600 text-sm font-semibold">Present</span>
-              <CheckCircle className="w-6 h-6 text-green-600" />
+              <span className="text-slate-500 text-xs font-medium uppercase tracking-wide">Present</span>
+              <div className="bg-slate-50 p-2 rounded-lg">
+                <CheckCircle className="w-4 h-4 text-green-600" />
+              </div>
             </div>
-            <div className="text-3xl font-bold text-gray-900">{stats.present}</div>
-            <div className="text-gray-500 text-xs mt-1">
+            <div className="text-2xl font-bold text-slate-900 leading-tight">{stats.present}</div>
+            <div className="text-slate-500 text-xs mt-1 font-normal">
               {stats.total > 0 ? ((stats.present / stats.total) * 100).toFixed(1) : 0}% of total
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl shadow-xl p-6 border border-gray-100">
+          <div className="bg-white rounded-xl shadow-sm p-5 border border-slate-200 hover:shadow-md transition-shadow">
             <div className="flex items-center justify-between mb-3">
-              <span className="text-gray-600 text-sm font-semibold">Absent</span>
-              <XCircle className="w-6 h-6 text-red-600" />
+              <span className="text-slate-500 text-xs font-medium uppercase tracking-wide">Absent</span>
+              <div className="bg-slate-50 p-2 rounded-lg">
+                <XCircle className="w-4 h-4 text-red-500" />
+              </div>
             </div>
-            <div className="text-3xl font-bold text-gray-900">{stats.absent}</div>
-            <div className="text-gray-500 text-xs mt-1">
+            <div className="text-2xl font-bold text-slate-900 leading-tight">{stats.absent}</div>
+            <div className="text-slate-500 text-xs mt-1 font-normal">
               {stats.total > 0 ? ((stats.absent / stats.total) * 100).toFixed(1) : 0}% of total
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl shadow-xl p-6 border border-gray-100">
+          <div className="bg-white rounded-xl shadow-sm p-5 border border-slate-200 hover:shadow-md transition-shadow">
             <div className="flex items-center justify-between mb-3">
-              <span className="text-gray-600 text-sm font-semibold">Late/Excused</span>
-              <Clock className="w-6 h-6 text-yellow-600" />
+              <span className="text-slate-500 text-xs font-medium uppercase tracking-wide">Late/Excused</span>
+              <div className="bg-slate-50 p-2 rounded-lg">
+                <Clock className="w-4 h-4 text-yellow-600" />
+              </div>
             </div>
-            <div className="text-3xl font-bold text-gray-900">{stats.late + stats.excused}</div>
-            <div className="text-gray-500 text-xs mt-1">
+            <div className="text-2xl font-bold text-slate-900 leading-tight">{stats.late + stats.excused}</div>
+            <div className="text-slate-500 text-xs mt-1 font-normal">
               {stats.late} late, {stats.excused} excused
             </div>
           </div>
@@ -428,14 +461,14 @@ export const UserAttendance = () => {
 
       {/* Filters */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-8">
-        <div className="bg-white rounded-2xl shadow-xl p-6 border border-gray-100">
+        <div className="bg-white rounded-xl shadow-sm p-5 border border-slate-200">
           <div className="flex flex-col md:flex-row gap-4">
             <div className="flex-1 relative">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
               <select
                 value={filter}
                 onChange={(e) => setFilter(e.target.value)}
-                className="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 appearance-none bg-white font-medium"
+                className="w-full pl-11 pr-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 appearance-none bg-white font-medium text-slate-900"
               >
                 <option value="">All Courses</option>
                 {courses.map((course) => (
@@ -450,14 +483,14 @@ export const UserAttendance = () => {
                 type="date"
                 value={dateFilter}
                 onChange={(e) => setDateFilter(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 font-medium"
+                className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 font-medium text-slate-900"
               />
             </div>
             <div className="flex-1">
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 appearance-none bg-white font-medium"
+                className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 appearance-none bg-white font-medium text-slate-900"
               >
                 <option value="">All Status</option>
                 <option value="present">Present</option>
@@ -472,7 +505,7 @@ export const UserAttendance = () => {
                   setDateFilter('');
                   setStatusFilter('');
                 }}
-                className="px-6 py-3 text-sm text-gray-600 hover:text-gray-900 font-semibold border border-gray-300 rounded-xl hover:bg-gray-50 transition-all"
+                className="px-5 py-2.5 text-sm text-slate-600 hover:text-slate-900 font-medium border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
               >
                 Clear
               </button>
@@ -484,14 +517,14 @@ export const UserAttendance = () => {
       {/* Course-wise Summary */}
       {Object.keys(attendanceByCourse).length > 0 && (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-8">
-          <div className="bg-white rounded-2xl shadow-xl p-8 border border-gray-100">
+          <div className="bg-white rounded-xl shadow-sm p-6 border border-slate-200">
             <div className="flex items-center gap-3 mb-6">
-              <div className="bg-gradient-to-br from-blue-600 to-blue-800 p-3 rounded-xl shadow-lg">
-                <PieChart className="w-6 h-6 text-white" />
+              <div className="bg-slate-50 p-2.5 rounded-lg">
+                <PieChart className="w-5 h-5 text-orange-600" />
               </div>
               <div>
-                <h2 className="text-2xl font-bold text-gray-900">Progress by Course</h2>
-                <p className="text-sm text-gray-500">Attendance breakdown by course</p>
+                <h2 className="text-xl font-semibold text-slate-900">Progress by Course</h2>
+                <p className="text-sm text-slate-500 font-normal">Attendance breakdown by course</p>
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -500,7 +533,7 @@ export const UserAttendance = () => {
                   ? ((data.present + data.excused) / data.total * 100).toFixed(1)
                   : 0;
                 return (
-                  <div key={courseTitle} className="border-2 border-gray-100 rounded-xl p-5 hover:border-blue-300 hover:shadow-lg transition-all bg-gradient-to-br from-white to-gray-50/50">
+                  <div key={courseTitle} className="border border-slate-200 rounded-lg p-4 hover:border-orange-200 hover:shadow-md transition-all bg-white">
                     <div className="flex items-center gap-3 mb-4">
                       <div className="bg-blue-100 p-2 rounded-lg">
                         <BookOpen className="w-5 h-5 text-blue-600" />
@@ -633,7 +666,7 @@ export const UserAttendance = () => {
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="sticky top-0 bg-gradient-to-r from-slate-900 to-blue-900 text-white px-8 py-6 flex items-center justify-between rounded-t-2xl">
-              <h2 className="text-2xl font-bold">Mark Attendance</h2>
+              <h2 className="text-2xl font-bold text-white">Mark Attendance</h2>
               <button
                 onClick={() => {
                   setShowMarkModal(false);
@@ -690,14 +723,20 @@ export const UserAttendance = () => {
                   {(() => {
                     const used = getUsedSessionsForCourse(markForm.course_id);
                     const nextAllowed = getNextAllowedDayForCourse(markForm.course_id);
+                    const isFromQuiz = isFromQuizCompletion;
+                    
                     return Array.from({ length: 30 }, (_, i) => {
                       const dayNum = i + 1;
                       const label = `Day ${dayNum}`;
                       const isUsed = used.has(label);
-                      const disabled = isUsed || dayNum !== nextAllowed;
+                      // If coming from quiz completion, allow the auto-filled session
+                      // Otherwise, enforce sequential day marking
+                      const disabled = isFromQuiz 
+                        ? isUsed && markForm.session !== label
+                        : (isUsed || dayNum !== nextAllowed);
                       let note = '';
-                      if (isUsed) note = ' (already marked)';
-                      else if (dayNum !== nextAllowed) note = ' (locked)';
+                      if (isUsed && markForm.session !== label) note = ' (already marked)';
+                      else if (!isFromQuiz && dayNum !== nextAllowed) note = ' (locked)';
                       return (
                         <option key={label} value={label} disabled={disabled}>
                           {label}
@@ -707,6 +746,12 @@ export const UserAttendance = () => {
                     });
                   })()}
                 </select>
+                {isFromQuizCompletion && markForm.session && (
+                  <p className="mt-1 text-xs text-green-600 flex items-center gap-1">
+                    <CheckCircle className="w-3 h-3" />
+                    Auto-filled from quiz completion
+                  </p>
+                )}
               </div>
 
               <div>
